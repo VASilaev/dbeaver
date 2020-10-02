@@ -39,7 +39,7 @@ import org.jkiss.dbeaver.model.runtime.AbstractJob;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.runtime.VoidProgressMonitor;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
-import org.jkiss.dbeaver.tasks.ui.nativetool.AbstractToolWizardPage;
+import org.jkiss.dbeaver.tasks.ui.nativetool.AbstractNativeToolWizardPage;
 import org.jkiss.dbeaver.ui.DBeaverIcons;
 import org.jkiss.dbeaver.ui.UIUtils;
 import org.jkiss.dbeaver.ui.controls.CustomSashForm;
@@ -49,7 +49,7 @@ import java.util.List;
 import java.util.*;
 
 
-class PostgreBackupWizardPageObjects extends AbstractToolWizardPage<PostgreBackupWizard>
+class PostgreBackupWizardPageObjects extends AbstractNativeToolWizardPage<PostgreBackupWizard>
 {
     private static final Log log = Log.getLog(PostgreBackupWizardPageObjects.class);
 
@@ -255,7 +255,9 @@ class PostgreBackupWizardPageObjects extends AbstractToolWizardPage<PostgreBacku
             }
             @Override
             protected IStatus run(DBRProgressMonitor monitor) {
+                monitor.beginTask("Collect tables", 1);
                 try {
+                    monitor.subTask("Collect tables to dump");
                     final List<PostgreTableBase> objects = new ArrayList<>();
                     for (JDBCTable table : curSchema.getTables(monitor)) {
                         if (table instanceof PostgreTableBase) {
@@ -278,6 +280,8 @@ class PostgreBackupWizardPageObjects extends AbstractToolWizardPage<PostgreBacku
                     });
                 } catch (DBException e) {
                     DBWorkbench.getPlatformUI().showError("Table list", "Can't read table list", e);
+                } finally {
+                    monitor.done();
                 }
                 return Status.OK_STATUS;
             }

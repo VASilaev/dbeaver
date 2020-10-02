@@ -74,6 +74,11 @@ public abstract class AbstractDataSourceInfo implements DBPDataSourceInfo
     }
 
     @Override
+    public boolean supportsNullableUniqueConstraints() {
+        return false;
+    }
+
+    @Override
     public boolean isDynamicMetadata() {
         return false;
     }
@@ -108,6 +113,11 @@ public abstract class AbstractDataSourceInfo implements DBPDataSourceInfo
     @Override
     public DBSObjectType[] getSupportedObjectTypes() {
         return new DBSObjectType[0];
+    }
+
+    @Override
+    public boolean needsTableMetaForColumnResolution() {
+        return false;
     }
 
     @Override

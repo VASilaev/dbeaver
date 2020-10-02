@@ -22,18 +22,6 @@ import org.eclipse.osgi.util.NLS;
 public class DTMessages extends NLS {
 	static final String BUNDLE_NAME = "org.jkiss.dbeaver.tools.transfer.internal.DTMessages"; //$NON-NLS-1$
 
-	public static String data_transfer_wizard_name;
-	public static String data_transfer_wizard_final_column_source;
-	public static String data_transfer_wizard_final_column_source_container;
-	public static String data_transfer_wizard_final_column_target;
-	public static String data_transfer_wizard_final_column_target_container;
-	public static String data_transfer_wizard_final_description;
-	public static String data_transfer_wizard_final_group_tables;
-	public static String data_transfer_wizard_final_group_objects;
-	public static String data_transfer_wizard_final_group_settings_source;
-	public static String data_transfer_wizard_final_group_settings_target;
-	public static String data_transfer_wizard_final_name;
-	public static String data_transfer_wizard_final_title;
 	public static String data_transfer_wizard_init_column_description;
 	public static String data_transfer_wizard_init_column_exported;
 	public static String data_transfer_wizard_init_description;
@@ -89,12 +77,17 @@ public class DTMessages extends NLS {
 	public static String data_transfer_wizard_page_input_files_name;
 	public static String data_transfer_wizard_page_input_files_title;
 	public static String data_transfer_wizard_page_input_files_description;
+	public static String data_transfer_wizard_page_ddl_name;
+	public static String data_transfer_wizard_page_ddl_title;
+	public static String data_transfer_wizard_page_ddl_description;
 	public static String data_transfer_wizard_page_preview_name;
 	public static String data_transfer_wizard_page_preview_title;
 	public static String data_transfer_wizard_page_preview_description;
 	public static String data_transfer_wizard_producers_title;
 	public static String data_transfer_wizard_producers_description;
 	public static String data_transfer_wizard_mappings_name;
+	public static String data_transfer_wizard_restricted_title;
+	public static String data_transfer_wizard_restricted_description;
 	public static String data_transfer_wizard_settings_group_input_files;
 	public static String data_transfer_wizard_settings_group_importer;
 	public static String data_transfer_wizard_settings_group_column_mappings;
@@ -119,6 +112,27 @@ public class DTMessages extends NLS {
 	public static String sql_script_task_page_settings_option_ignore_errors;
 	public static String sql_script_task_page_settings_option_dump_results;
 	public static String sql_script_task_page_settings_option_auto_commit;
+	public static String database_consumer_settings_option_use_transactions;
+	public static String database_consumer_settings_option_commit_after;
+	public static String database_consumer_settings_option_disable_batches;
+	public static String database_consumer_settings_option_transfer_auto_generated_columns;
+	public static String database_consumer_settings_option_truncate_before_load;
+
+	public static String data_transfer_settings_title_find_producer;
+	public static String data_transfer_settings_message_find_data_producer;
+	public static String data_transfer_settings_title_find_consumer;
+	public static String data_transfer_settings_message_find_data_consumer;
+	public static String data_transfer_settings_title_configuration_error;
+	public static String data_transfer_settings_message_error_reading_task_configuration;
+	public static String database_consumer_settings_title_init_connection;
+	public static String database_consumer_settings_message_error_connecting;
+	public static String database_mapping_container_title_attributes_read_failed;
+	public static String database_mapping_container_message_get_attributes_from;
+	public static String database_transfer_consumer_task_error_occurred_during_data_load;
+	public static String stream_transfer_consumer_title_run_process;
+	public static String stream_transfer_consumer_message_error_running_process;
+
+
 
 	static {
 		// initialize resource bundle

@@ -165,13 +165,27 @@ public final class SQLUtils {
     public static String makeLikePattern(String like)
     {
         StringBuilder result = new StringBuilder();
+
         for (int i = 0; i < like.length(); i++) {
             char c = like.charAt(i);
             if (c == '*') result.append(".*");
             else if (c == '?' || c == '_') result.append(".");
             else if (c == '%') result.append(".*");
             else if (Character.isLetterOrDigit(c)) result.append(c);
-            else result.append("\\").append(c);
+            else if (c == '\\') {
+                if (i < like.length() - 1) {
+                    char nc = like.charAt(i + 1);
+                    if (nc == '_' || nc == '*' || nc == '?' || nc == '.') {
+                        result.append("\\").append(nc);
+                        i++;
+                    } else {
+                        result.append("\\");
+                    }
+                }
+            }
+            else {
+                result.append(c);
+            }
         }
         return result.toString();
     }
@@ -538,11 +552,13 @@ public final class SQLUtils {
                     if (i > 0) {
                         conString.append(" AND");
                     }
+                    String strValue;
                     if (inlineCriteria) {
-                        conString.append(' ').append(convertValueToSQL(dataSource, constraint.getAttribute(), value));
+                        strValue = convertValueToSQL(dataSource, constraint.getAttribute(), value);
                     } else {
-                        conString.append(" ").append(dataSource.getSQLDialect().getTypeCastClause(constraint.getAttribute(),"?"));
+                        strValue = dataSource.getSQLDialect().getTypeCastClause(constraint.getAttribute(), "?");
                     }
+                    conString.append(' ').append(strValue);
                 }
             } else if (operator.getArgumentCount() < 0) {
                 // Multiple arguments
@@ -618,9 +634,13 @@ public final class SQLUtils {
         }
         SQLDialect sqlDialect = dataSource.getSQLDialect();
 
-        switch (attribute.getDataKind()) {
+        DBPDataKind dataKind = attribute.getDataKind();
+        switch (dataKind) {
             case BOOLEAN:
             case NUMERIC:
+                if (sqlDialect != null) {
+                    return sqlDialect.escapeScriptValue(attribute, value, strValue);
+                }
                 return strValue;
             case CONTENT:
                 if (value instanceof DBDContent) {
@@ -635,7 +655,7 @@ public final class SQLUtils {
                 if (sqlDialect != null) {
                     strValue = sqlDialect.escapeString(strValue);
                 }
-                if (!(strValue.startsWith("'") && strValue.endsWith("'"))) {
+                if (dataKind == DBPDataKind.STRING || !(strValue.startsWith("'") && strValue.endsWith("'"))) {
                     strValue = '\'' + strValue + '\'';
                 }
                 return sqlDialect.getTypeCastClause(attribute, strValue);
@@ -742,7 +762,13 @@ public final class SQLUtils {
             }
             prevChar = c;
         }
-        String alias = buf.toString().toLowerCase(Locale.ENGLISH);
+        String alias;
+        if(!CommonUtils.isEmpty(buf)) {
+            alias = buf.toString().toLowerCase(Locale.ENGLISH);
+        }
+        else{
+            alias = "t";
+        }
 
         String result = alias;
         for (int i = 2; i < 500; i++) {
@@ -906,6 +932,45 @@ public final class SQLUtils {
         return script.toString();
     }
 
+    @NotNull
+    public static String generateComments(DBPDataSource dataSource, DBEPersistAction[] persistActions, boolean addComments)
+    {
+        final SQLDialect sqlDialect = SQLUtils.getDialectFromDataSource(dataSource);
+        final String lineSeparator = GeneralUtils.getDefaultLineSeparator();
+
+        StringBuilder script = new StringBuilder(64);
+        if (addComments) {
+            script.append(DBEAVER_DDL_COMMENT).append(Platform.getProduct().getName()).append(lineSeparator)
+                .append(DBEAVER_DDL_WARNING).append(lineSeparator);
+        }
+        if (persistActions != null) {
+            String slComment;
+            String[] slComments = sqlDialect.getSingleLineComments();
+            if (ArrayUtils.isEmpty(slComments)) {
+                slComment = "--";
+            } else {
+                slComment = slComments[0];
+            }
+            for (DBEPersistAction action : persistActions) {
+                if (action.getType() != DBEPersistAction.ActionType.COMMENT) {
+                    String scriptLine = action.getTitle();
+                    if (CommonUtils.isEmpty(scriptLine)) {
+                        continue;
+                    }
+                    script.append(slComment).append(" ").append(scriptLine);
+                } else {
+                    String scriptLine = action.getScript();
+                    if (CommonUtils.isEmpty(scriptLine)) {
+                        continue;
+                    }
+                    script.append(scriptLine);
+                }
+                script.append(lineSeparator);
+            }
+        }
+        return script.toString();
+    }
+
     public static String getScriptLineDelimiter(SQLDialect sqlDialect) {
         String delimiter = sqlDialect.getScriptDelimiter();
         if (!delimiter.isEmpty() && Character.isLetterOrDigit(delimiter.charAt(0))) {
@@ -924,7 +989,7 @@ public final class SQLUtils {
             return name.split(Pattern.quote(nameSeparator));
         }
         if (!name.contains(nameSeparator)) {
-            return new String[] { name };
+            return new String[] { DBUtils.getUnQuotedIdentifier(name, quoteStrings) };
         }
         List<String> nameList = new ArrayList<>();
         while (!name.isEmpty()) {
@@ -939,7 +1004,12 @@ public final class SQLUtils {
                         String partName = keepQuotes ?
                             name.substring(0, endPos + endQuote.length()) :
                             name.substring(startQuote.length(), endPos);
-                        nameList.add(partName);
+                        while (partName.endsWith(nameSeparator)) {
+                            partName = partName.substring(0, partName.length() - 1);
+                        }
+                        if (!partName.isEmpty()) {
+                            nameList.add(partName);
+                        }
                         name = name.substring(endPos + endQuote.length()).trim();
                         hadQuotedPart = true;
                         break;
@@ -960,7 +1030,7 @@ public final class SQLUtils {
                 name = name.substring(nameSeparator.length()).trim();
             }
         }
-        return nameList.toArray(new String[nameList.size()]);
+        return nameList.toArray(new String[0]);
     }
 
     public static String generateTableJoin(DBRProgressMonitor monitor, DBSEntity leftTable, String leftAlias, DBSEntity rightTable, String rightAlias) throws DBException {
@@ -1100,5 +1170,21 @@ public final class SQLUtils {
         }
         sqlStatement.setText(query);
         //sqlStatement.setOriginalText(query);
+    }
+
+    public static boolean needQueryDelimiter(SQLDialect sqlDialect, String query) {
+        String delimiter = sqlDialect.getScriptDelimiter();
+        if (!delimiter.isEmpty()) {
+            if (Character.isLetterOrDigit(delimiter.charAt(0))) {
+                if (query.toUpperCase().endsWith(delimiter.toUpperCase())) {
+                    if (!Character.isLetterOrDigit(query.charAt(query.length() - delimiter.length() - 1))) {
+                        return true;
+                    }
+                }
+            } else {
+                return !query.endsWith(delimiter);
+            }
+        }
+        return true;
     }
 }

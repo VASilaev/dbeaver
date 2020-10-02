@@ -62,6 +62,7 @@ public class GenericTableColumnManager extends SQLTableColumnManager<GenericTabl
         int columnSize = columnType != null && columnType.getDataKind() == DBPDataKind.STRING ? 100 : 0;
         GenericTableColumn column = tableBase.getDataSource().getMetaModel().createTableColumnImpl(
             monitor,
+            null,
             tableBase,
             getNewColumnName(monitor, context, tableBase),
             columnType == null ? "INTEGER" : columnType.getName(),
@@ -99,7 +100,10 @@ public class GenericTableColumnManager extends SQLTableColumnManager<GenericTabl
     @Override
     protected ColumnModifier[] getSupportedModifiers(GenericTableColumn column, Map<String, Object> options) {
         // According to SQL92 DEFAULT comes before constraints
-        return new ColumnModifier[]{DataTypeModifier, DefaultModifier, NotNullModifier};
+        return new ColumnModifier[]{
+            DataTypeModifier,
+            DefaultModifier,
+            column.getDataSource().getMetaModel().isColumnNotNullByDefault() ? NullNotNullModifier : NotNullModifier};
     }
 
     @Override

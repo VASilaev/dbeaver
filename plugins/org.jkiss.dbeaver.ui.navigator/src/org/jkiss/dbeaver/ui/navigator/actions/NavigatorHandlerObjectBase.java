@@ -198,6 +198,12 @@ public abstract class NavigatorHandlerObjectBase extends AbstractHandler {
                             SQLUtils.generateScript(commandContext.getExecutionContext().getDataSource(),
                                 persistActions,
                                 false));
+                        if (script.length() == 0) {
+                            script.append(
+                                SQLUtils.generateComments(commandContext.getExecutionContext().getDataSource(),
+                                    persistActions,
+                                    false));
+                        }
                     }
                 } catch (DBException e) {
                     throw new InvocationTargetException(e);
@@ -208,10 +214,14 @@ public abstract class NavigatorHandlerObjectBase extends AbstractHandler {
         } catch (InterruptedException e) {
             return false;
         }
-        UIServiceSQL serviceSQL = DBWorkbench.getService(UIServiceSQL.class);
-        if (serviceSQL != null) {
-            return serviceSQL.openSQLViewer(
-                commandContext.getExecutionContext(), dialogTitle, UIIcon.SQL_PREVIEW, script.toString(), true, false) == IDialogConstants.PROCEED_ID;
+        if (script.length() > 0) {
+            UIServiceSQL serviceSQL = DBWorkbench.getService(UIServiceSQL.class);
+            if (serviceSQL != null) {
+                return serviceSQL.openSQLViewer(
+                    commandContext.getExecutionContext(), dialogTitle, UIIcon.SQL_PREVIEW, script.toString(), true, false) == IDialogConstants.PROCEED_ID;
+            }
+        } else {
+            return UIUtils.confirmAction(workbenchWindow.getShell(), dialogTitle, "No SQL script available.\nAre you sure you want to proceed?");
         }
 
         return false;

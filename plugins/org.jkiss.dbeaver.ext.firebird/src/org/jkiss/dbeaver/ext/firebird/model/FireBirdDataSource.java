@@ -31,12 +31,14 @@ import org.jkiss.dbeaver.model.exec.jdbc.JDBCSession;
 import org.jkiss.dbeaver.model.exec.plan.DBCPlan;
 import org.jkiss.dbeaver.model.exec.plan.DBCPlanStyle;
 import org.jkiss.dbeaver.model.exec.plan.DBCQueryPlanner;
+import org.jkiss.dbeaver.model.exec.plan.DBCQueryPlannerConfiguration;
 import org.jkiss.dbeaver.model.impl.jdbc.JDBCUtils;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.utils.IntKeyMap;
 
 import java.sql.SQLException;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public class FireBirdDataSource extends GenericDataSource
@@ -86,7 +88,7 @@ public class FireBirdDataSource extends GenericDataSource
         try (JDBCSession session = DBUtils.openMetaSession(monitor, this, "Read generic metadata")) {
             // Read metadata
             try (JDBCPreparedStatement dbStat = session.prepareStatement("SELECT * FROM RDB$TYPES")) {
-                monitor.subTask("Load FireBird types");
+                monitor.subTask("Load Firebird types");
                 try (JDBCResultSet dbResult = dbStat.executeQuery()) {
                     while (dbResult.next()) {
                         if (monitor.isCanceled()) {
@@ -130,15 +132,28 @@ public class FireBirdDataSource extends GenericDataSource
     }
 
     
-	@Override
-	public DBCPlan planQueryExecution(DBCSession session, String query) throws DBException {
+	@NotNull
+    @Override
+	public DBCPlan planQueryExecution(@NotNull DBCSession session, @NotNull String query, @NotNull DBCQueryPlannerConfiguration configuration) throws DBException {
 		FireBirdPlanAnalyser plan = new FireBirdPlanAnalyser(this, (JDBCSession) session, query);
         plan.explain();
         return plan;
 	}
 
-	@Override
+	@NotNull
+    @Override
 	public DBCPlanStyle getPlanStyle() {
 		return DBCPlanStyle.PLAN;
 	}
+
+    @Override
+    public List<FireBirdTable> getPhysicalTables(DBRProgressMonitor monitor) throws DBException {
+        return (List<FireBirdTable>) super.getPhysicalTables(monitor);
+    }
+
+    @Override
+    public List<FireBirdTable> getTables(DBRProgressMonitor monitor) throws DBException {
+        return (List<FireBirdTable>) super.getTables(monitor);
+    }
+
 }

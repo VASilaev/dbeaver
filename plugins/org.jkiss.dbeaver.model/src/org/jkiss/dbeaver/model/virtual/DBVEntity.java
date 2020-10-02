@@ -297,10 +297,10 @@ public class DBVEntity extends DBVObject implements DBSEntity, DBPQualifiedObjec
 
     @NotNull
     @Override
-    public Collection<? extends DBSEntityAttribute> getAttributes(@NotNull DBRProgressMonitor monitor) throws DBException {
+    public List<? extends DBSEntityAttribute> getAttributes(@NotNull DBRProgressMonitor monitor) throws DBException {
         DBSEntity realEntity = getRealEntity(monitor);
         if (realEntity != null) {
-            final Collection<? extends DBSEntityAttribute> realAttributes = realEntity.getAttributes(monitor);
+            final List<? extends DBSEntityAttribute> realAttributes = realEntity.getAttributes(monitor);
             if (!CommonUtils.isEmpty(realAttributes)) {
                 List<DBVEntityAttribute> customAttributes = getCustomAttributes();
                 if (!CommonUtils.isEmpty(customAttributes)) {
@@ -344,8 +344,9 @@ public class DBVEntity extends DBVObject implements DBSEntity, DBPQualifiedObjec
                     if (nextAttribute == null) {
                         if (create) {
                             nextAttribute = new DBVEntityAttribute(this, topAttribute, path[i].getName());
+                            topAttribute.addChild(nextAttribute);
                         } else {
-                            log.debug("Can't find hierarchical attribute '" + binding + "'");
+                            log.debug("Can't find nested attribute '" + binding + "' in '" + topAttribute.getName());
                             return null;
                         }
                     }
@@ -399,7 +400,7 @@ public class DBVEntity extends DBVObject implements DBSEntity, DBPQualifiedObjec
                 "VIRTUAL_PK"));
         }
         for (DBVEntityConstraint constraint : entityConstraints) {
-            if (constraint.getConstraintType().isUnique()) {
+            if (constraint.getConstraintType().isUnique() && !CommonUtils.isEmpty(constraint.getAttributes())) {
                 return constraint;
             }
         }

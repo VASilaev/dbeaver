@@ -21,11 +21,11 @@ import org.eclipse.swt.SWT;
 import org.eclipse.swt.events.SelectionAdapter;
 import org.eclipse.swt.events.SelectionEvent;
 import org.eclipse.swt.layout.GridData;
-import org.eclipse.swt.layout.GridLayout;
 import org.eclipse.swt.widgets.*;
 import org.jkiss.dbeaver.model.data.DBDCellValue;
 import org.jkiss.dbeaver.tools.transfer.database.DatabaseProducerSettings;
 import org.jkiss.dbeaver.tools.transfer.internal.DTMessages;
+import org.jkiss.dbeaver.tools.transfer.ui.internal.DTUIMessages;
 import org.jkiss.dbeaver.tools.transfer.ui.wizard.DataTransferWizard;
 import org.jkiss.dbeaver.ui.UIUtils;
 import org.jkiss.dbeaver.ui.dialogs.ActiveWizardPage;
@@ -48,9 +48,9 @@ public class DatabaseProducerPageExtractSettings extends ActiveWizardPage<DataTr
     private Text fetchSizeText;
 
     public DatabaseProducerPageExtractSettings() {
-        super("Extraction settings");
-        setTitle("Extraction settings");
-        setDescription("Database table(s) extraction settings");
+        super(DTUIMessages.database_producer_page_extract_settings_name_and_title);
+        setTitle(DTUIMessages.database_producer_page_extract_settings_name_and_title);
+        setDescription(DTUIMessages.database_producer_page_extract_settings_description);
         setPageComplete(false);
     }
 
@@ -58,12 +58,7 @@ public class DatabaseProducerPageExtractSettings extends ActiveWizardPage<DataTr
     public void createControl(Composite parent) {
         initializeDialogUnits(parent);
 
-        Composite composite = new Composite(parent, SWT.NULL);
-        GridLayout gl = new GridLayout();
-        gl.marginHeight = 0;
-        gl.marginWidth = 0;
-        composite.setLayout(gl);
-        composite.setLayoutData(new GridData(GridData.FILL_BOTH));
+        Composite composite = UIUtils.createComposite(parent, 1);
 
         final DatabaseProducerSettings settings = getWizard().getPageSettings(this, DatabaseProducerSettings.class);
 
@@ -72,7 +67,7 @@ public class DatabaseProducerPageExtractSettings extends ActiveWizardPage<DataTr
 
             Label threadsNumLabel = UIUtils.createControlLabel(generalSettings, DTMessages.data_transfer_wizard_output_label_max_threads);
             threadsNumText = new Text(generalSettings, SWT.BORDER);
-            threadsNumText.setToolTipText("Number of simultaneous export threads. Can't be greater than number of source tables.");
+            threadsNumText.setToolTipText(DTUIMessages.database_producer_page_extract_settings_threads_num_text_tooltip);
             threadsNumText.addVerifyListener(UIUtils.getIntegerVerifyListener(Locale.ENGLISH));
             threadsNumText.addModifyListener(e -> {
                 try {
@@ -91,6 +86,7 @@ public class DatabaseProducerPageExtractSettings extends ActiveWizardPage<DataTr
 
                 UIUtils.createControlLabel(generalSettings, DTMessages.data_transfer_wizard_output_label_extract_type);
                 rowsExtractType = new Combo(generalSettings, SWT.DROP_DOWN | SWT.READ_ONLY);
+                rowsExtractType.setLayoutData(new GridData(GridData.HORIZONTAL_ALIGN_BEGINNING, GridData.VERTICAL_ALIGN_BEGINNING, false, false, 3, 1));
                 rowsExtractType.setItems(
                     DTMessages.data_transfer_wizard_output_combo_extract_type_item_single_query,
                     DTMessages.data_transfer_wizard_output_combo_extract_type_item_by_segments);
@@ -106,7 +102,7 @@ public class DatabaseProducerPageExtractSettings extends ActiveWizardPage<DataTr
                 });
 
                 segmentSizeLabel = UIUtils.createControlLabel(generalSettings, DTMessages.data_transfer_wizard_output_label_segment_size);
-                segmentSizeLabel.setLayoutData(new GridData(GridData.HORIZONTAL_ALIGN_END, GridData.VERTICAL_ALIGN_BEGINNING, false, false, 1, 1));
+                segmentSizeLabel.setLayoutData(new GridData(GridData.HORIZONTAL_ALIGN_BEGINNING, GridData.VERTICAL_ALIGN_BEGINNING, false, false, 1, 1));
                 segmentSizeText = new Text(generalSettings, SWT.BORDER);
                 segmentSizeText.addModifyListener(e -> {
                     try {
@@ -115,10 +111,10 @@ public class DatabaseProducerPageExtractSettings extends ActiveWizardPage<DataTr
                         // just skip it
                     }
                 });
-                segmentSizeText.setLayoutData(new GridData(GridData.HORIZONTAL_ALIGN_END, GridData.VERTICAL_ALIGN_BEGINNING, false, false, 1, 1));
+                segmentSizeText.setLayoutData(new GridData(GridData.HORIZONTAL_ALIGN_BEGINNING, GridData.VERTICAL_ALIGN_BEGINNING, false, false, 1, 1));
             }
 
-            newConnectionCheckbox = UIUtils.createCheckbox(generalSettings, DTMessages.data_transfer_wizard_output_checkbox_new_connection, "Open new physical connection for data reading.\nMakes great sense if you are going to continue to work with your database during export process.", true, 4);
+            newConnectionCheckbox = UIUtils.createCheckbox(generalSettings, DTMessages.data_transfer_wizard_output_checkbox_new_connection, DTUIMessages.database_producer_page_extract_settings_new_connection_checkbox_tooltip, true, 4);
             newConnectionCheckbox.addSelectionListener(new SelectionAdapter() {
                 @Override
                 public void widgetSelected(SelectionEvent e) {
@@ -126,7 +122,7 @@ public class DatabaseProducerPageExtractSettings extends ActiveWizardPage<DataTr
                 }
             });
 
-            rowCountCheckbox = UIUtils.createCheckbox(generalSettings, DTMessages.data_transfer_wizard_output_checkbox_select_row_count, "Query row count before performing export.\nThis will let you to track export progress but may cause performance faults in some cases.", true, 4);
+            rowCountCheckbox = UIUtils.createCheckbox(generalSettings, DTMessages.data_transfer_wizard_output_checkbox_select_row_count, DTUIMessages.database_producer_page_extract_settings_row_count_checkbox_tooltip, true, 4);
             rowCountCheckbox.addSelectionListener(new SelectionAdapter() {
                 @Override
                 public void widgetSelected(SelectionEvent e) {
@@ -134,8 +130,8 @@ public class DatabaseProducerPageExtractSettings extends ActiveWizardPage<DataTr
                 }
             });
 
-            fetchSizeText = UIUtils.createLabelText(generalSettings, "Fetch size", "", SWT.BORDER);
-            fetchSizeText.setToolTipText("Number of rows to fetch per one server roundtrip. May greatly affect extraction performance.");
+            fetchSizeText = UIUtils.createLabelText(generalSettings, DTUIMessages.database_producer_page_extract_settings_text_fetch_size_label, "", SWT.BORDER);
+            fetchSizeText.setToolTipText(DTUIMessages.database_producer_page_extract_settings_text_fetch_size_tooltip);
             fetchSizeText.addVerifyListener(UIUtils.getIntegerVerifyListener(Locale.ENGLISH));
             fetchSizeText.addModifyListener(e -> {
                 settings.setFetchSize(Integer.parseInt(fetchSizeText.getText()));
@@ -210,11 +206,11 @@ public class DatabaseProducerPageExtractSettings extends ActiveWizardPage<DataTr
         if (rowsExtractType != null) {
             int selectionIndex = rowsExtractType.getSelectionIndex();
             if (selectionIndex == EXTRACT_TYPE_SEGMENTS) {
-                segmentSizeLabel.setVisible(true);
-                segmentSizeText.setVisible(true);
+                segmentSizeLabel.setEnabled(true);
+                segmentSizeText.setEnabled(true);
             } else {
-                segmentSizeLabel.setVisible(false);
-                segmentSizeText.setVisible(false);
+                segmentSizeLabel.setEnabled(false);
+                segmentSizeText.setEnabled(false);
             }
         }
         return true;

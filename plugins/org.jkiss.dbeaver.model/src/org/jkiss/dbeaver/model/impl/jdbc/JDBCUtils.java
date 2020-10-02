@@ -436,39 +436,6 @@ public class JDBCUtils {
         return value == null ? null : value.trim();
     }
 
-    public static void dumpResultSet(ResultSet dbResult)
-    {
-        try {
-            ResultSetMetaData md = dbResult.getMetaData();
-            int count = md.getColumnCount();
-            dumpResultSetMetaData(dbResult);
-            while (dbResult.next()) {
-                for (int i = 1; i <= count; i++) {
-                    String colValue = dbResult.getString(i);
-                    System.out.print(colValue + "\t");
-                }
-                System.out.println();
-            }
-            System.out.println();
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-    }
-
-    public static void dumpResultSetMetaData(ResultSet dbResult)
-    {
-        try {
-            ResultSetMetaData md = dbResult.getMetaData();
-            int count = md.getColumnCount();
-            for (int i = 1; i <= count; i++) {
-                System.out.print(md.getColumnName(i) + " [" + md.getColumnTypeName(i) + "]\t");
-            }
-            System.out.println();
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-    }
-
     public static boolean isConnectionAlive(DBPDataSource dataSource, Connection connection)
     {
         try {
@@ -616,13 +583,22 @@ public class JDBCUtils {
         }
     }
 
-    public static void executeStatement(Connection session, String sql) throws SQLException
-    {
+    public static void executeStatement(Connection session, String sql, Object ... params) throws SQLException {
+        try (PreparedStatement dbStat = session.prepareStatement(sql)) {
+            if (params != null) {
+                for (int i = 0; i < params.length; i++) {
+                    dbStat.setObject(i + 1, params[i]);
+                }
+            }
+            dbStat.execute();
+        }
+    }
+
+    public static void executeStatement(Connection session, String sql) throws SQLException {
         try (Statement dbStat = session.createStatement()) {
             dbStat.execute(sql);
         }
     }
-
 
     @Nullable
     public static String queryString(JDBCSession session, String sql, Object... args) throws SQLException
@@ -786,5 +762,6 @@ public class JDBCUtils {
     public static boolean queryHasOutputParameters(SQLDialect sqlDialect, String sqlQuery) {
         return sqlQuery.contains("?");
     }
+
 
 }

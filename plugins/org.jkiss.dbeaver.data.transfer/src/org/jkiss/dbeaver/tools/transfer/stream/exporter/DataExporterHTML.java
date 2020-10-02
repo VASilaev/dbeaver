@@ -56,7 +56,7 @@ public class DataExporterHTML extends StreamExporterAbstract {
     public void init(IStreamDataExporterSite site) throws DBException {
         super.init(site);
 
-        Map<Object, Object> properties = site.getProperties();
+        Map<String, Object> properties = site.getProperties();
         outputHeader = CommonUtils.getBoolean(properties.get(PROP_HEADER), outputHeader);
     }
 
@@ -85,33 +85,31 @@ public class DataExporterHTML extends StreamExporterAbstract {
             "border: thin solid #6495ed;" +
 //              "width: 50%;" +
             "padding: 5px;" +
-            "background-color: #D0E3FA;" +
-            "background-image: url(sky.jpg);}" +
+            "background-color: #D0E3FA;}" +
             "td{font-family: sans-serif;" +
             "border: thin solid #6495ed;" +
 //              "width: 50%;" +
             "padding: 5px;" +
-            "text-align: center;" +
-            "background-color: #ffffff;}" +
+            "text-align: center;}" +
             ".odd{background:#e8edff;}" +
             "img{padding:5px; border:solid; border-color: #dddddd #aaaaaa #aaaaaa #dddddd; border-width: 1px 2px 2px 1px; background-color:white;}" +
             "</style>\n</head>\n");
         out.write("<body>\n<table>");
 
-        out.write("<tr>");
         if (outputHeader) {
+            out.write("<tr>");
             writeTableTitle(name, columns.length);
-        }
-        out.write("</tr>");
-        out.write("<tr>");
-        for (DBDAttributeBinding column : columns) {
-            String colName = column.getLabel();
-            if (CommonUtils.isEmpty(colName)) {
-                colName = column.getName();
+            out.write("</tr>");
+            out.write("<tr>");
+            for (DBDAttributeBinding column : columns) {
+                String colName = column.getLabel();
+                if (CommonUtils.isEmpty(colName)) {
+                    colName = column.getName();
+                }
+                writeTextCell(colName, true);
             }
-            writeTextCell(colName, true);
+            out.write("</tr>");
         }
-        out.write("</tr>");
     }
 
     @Override

@@ -72,6 +72,16 @@ public class DriverLibraryMavenArtifact extends DriverLibraryAbstract
         this.originalPreferredVersion = copyFrom.originalPreferredVersion;
     }
 
+    public MavenArtifactReference getReference() {
+        return reference;
+    }
+
+    public void setReference(MavenArtifactReference reference) {
+        this.reference = reference;
+        this.path = PATH_PREFIX + reference.toString();
+        this.localVersion = null;
+    }
+
     private void initArtifactReference(String preferredVersion) {
         if (path.endsWith("]")) {
             int divPos = path.lastIndexOf('[');
@@ -107,6 +117,10 @@ public class DriverLibraryMavenArtifact extends DriverLibraryAbstract
 
     public boolean isIgnoreDependencies() {
         return ignoreDependencies;
+    }
+
+    public void setIgnoreDependencies(boolean ignoreDependencies) {
+        this.ignoreDependencies = ignoreDependencies;
     }
 
     @NotNull

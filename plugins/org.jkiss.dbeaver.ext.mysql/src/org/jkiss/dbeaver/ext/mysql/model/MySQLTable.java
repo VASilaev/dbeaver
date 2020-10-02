@@ -22,6 +22,7 @@ import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.ext.mysql.MySQLConstants;
 import org.jkiss.dbeaver.model.DBPEvaluationContext;
+import org.jkiss.dbeaver.model.DBPObjectStatistics;
 import org.jkiss.dbeaver.model.DBUtils;
 import org.jkiss.dbeaver.model.exec.DBCException;
 import org.jkiss.dbeaver.model.exec.jdbc.*;
@@ -29,6 +30,7 @@ import org.jkiss.dbeaver.model.impl.jdbc.JDBCConstants;
 import org.jkiss.dbeaver.model.impl.jdbc.JDBCUtils;
 import org.jkiss.dbeaver.model.impl.jdbc.cache.JDBCObjectCache;
 import org.jkiss.dbeaver.model.meta.*;
+import org.jkiss.dbeaver.model.preferences.DBPPropertySource;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.struct.*;
 import org.jkiss.dbeaver.model.struct.cache.DBSObjectCache;
@@ -36,6 +38,8 @@ import org.jkiss.dbeaver.model.struct.cache.SimpleObjectCache;
 import org.jkiss.dbeaver.model.struct.rdb.DBSForeignKeyModifyRule;
 import org.jkiss.dbeaver.model.struct.rdb.DBSTable;
 import org.jkiss.dbeaver.model.struct.rdb.DBSTableIndex;
+import org.jkiss.dbeaver.runtime.properties.PropertyCollector;
+import org.jkiss.utils.ByteNumberFormat;
 import org.jkiss.utils.CommonUtils;
 
 import java.sql.ResultSet;
@@ -45,7 +49,7 @@ import java.util.*;
 /**
  * MySQLTable
  */
-public class MySQLTable extends MySQLTableBase
+public class MySQLTable extends MySQLTableBase implements DBPObjectStatistics
 {
     private static final Log log = Log.getLog(MySQLTable.class);
 
@@ -76,10 +80,10 @@ public class MySQLTable extends MySQLTableBase
 
         @Property(category = CATEGORY_STATISTICS, viewable = false, order = 10) public long getRowCount() { return rowCount; }
         @Property(category = CATEGORY_STATISTICS, viewable = false, order = 11) public long getAvgRowLength() { return avgRowLength; }
-        @Property(category = CATEGORY_STATISTICS, viewable = true, order = 12) public long getDataLength() { return dataLength; }
-        @Property(category = CATEGORY_STATISTICS, viewable = false, order = 13) public long getMaxDataLength() { return maxDataLength; }
-        @Property(category = CATEGORY_STATISTICS, viewable = false, order = 14) public long getDataFree() { return dataFree; }
-        @Property(category = CATEGORY_STATISTICS, viewable = false, order = 15) public long getIndexLength() { return indexLength; }
+        @Property(category = CATEGORY_STATISTICS, viewable = true, order = 12, formatter = ByteNumberFormat.class) public long getDataLength() { return dataLength; }
+        @Property(category = CATEGORY_STATISTICS, viewable = false, order = 13, formatter = ByteNumberFormat.class) public long getMaxDataLength() { return maxDataLength; }
+        @Property(category = CATEGORY_STATISTICS, viewable = false, order = 14, formatter = ByteNumberFormat.class) public long getDataFree() { return dataFree; }
+        @Property(category = CATEGORY_STATISTICS, viewable = false, order = 15, formatter = ByteNumberFormat.class) public long getIndexLength() { return indexLength; }
         @Property(category = CATEGORY_STATISTICS, viewable = false, order = 16) public String getRowFormat() { return rowFormat; }
 
         @Property(category = CATEGORY_STATISTICS, viewable = false, order = 20) public Date getCreateTime() { return createTime; }
@@ -149,7 +153,7 @@ public class MySQLTable extends MySQLTableBase
         // Copy constraints
         for (DBSEntityConstraint srcConstr : CommonUtils.safeCollection(source.getConstraints(monitor))) {
             MySQLTableConstraint constr = new MySQLTableConstraint(monitor, this, srcConstr);
-            this.getContainer().constraintCache.cacheObject(constr);
+            this.getContainer().uniqueKeyCache.cacheObject(constr);
         }
 
         // Copy FKs
@@ -186,6 +190,25 @@ public class MySQLTable extends MySQLTableBase
     }
 
     @Override
+    public boolean hasStatistics() {
+        return additionalInfo.loaded == true;
+    }
+
+    @Override
+    public long getStatObjectSize() {
+        return additionalInfo.dataLength + additionalInfo.indexLength;
+    }
+
+    @Nullable
+    @Override
+    public DBPPropertySource getStatProperties() {
+        PropertyCollector collector = new PropertyCollector(additionalInfo, true);
+        collector.collectProperties();
+        return collector;
+    }
+
+
+    @Override
     public boolean isView()
     {
         return false;
@@ -206,13 +229,36 @@ public class MySQLTable extends MySQLTableBase
     public Collection<MySQLTableConstraint> getConstraints(@NotNull DBRProgressMonitor monitor)
         throws DBException
     {
-        return getContainer().constraintCache.getObjects(monitor, getContainer(), this);
+        List<MySQLTableConstraint> constraintObjects = getContainer().uniqueKeyCache.getObjects(monitor, getContainer(), this);
+        if (getDataSource().supportsCheckConstraints()) {
+            List<MySQLTableConstraint> checkConstraintObjects = getContainer().checkConstraintCache.getObjects(monitor, getContainer(), this);
+            if (!CommonUtils.isEmpty(checkConstraintObjects)) {
+                constraintObjects.addAll(checkConstraintObjects);
+            }
+            return constraintObjects;
+        }
+        else {
+            return constraintObjects;
+        }
     }
 
-    public MySQLTableConstraint getConstraint(DBRProgressMonitor monitor, String ukName)
+    public MySQLTableConstraint getUniqueKey(DBRProgressMonitor monitor, String ukName)
         throws DBException
     {
-        return getContainer().constraintCache.getObject(monitor, getContainer(), this, ukName);
+        return getContainer().uniqueKeyCache.getObject(monitor, getContainer(), this, ukName);
+    }
+
+    @Association
+    public Collection<MySQLTableConstraint> getCheckConstraints(@NotNull DBRProgressMonitor monitor)
+            throws DBException
+    {
+         return getContainer().checkConstraintCache.getObjects(monitor, getContainer(), this);
+    }
+
+    public MySQLTableConstraint getCheckConstraint(DBRProgressMonitor monitor, String constName)
+            throws DBException
+    {
+        return getContainer().checkConstraintCache.getObject(monitor, getContainer(), this, constName);
     }
 
     @Override
@@ -248,8 +294,9 @@ public class MySQLTable extends MySQLTableBase
         return foreignKeys;
     }
 
+    @Nullable
     @Association
-    public Collection<MySQLTrigger> getTriggers(DBRProgressMonitor monitor)
+    public List<MySQLTrigger> getTriggers(@NotNull DBRProgressMonitor monitor)
         throws DBException
     {
         List<MySQLTrigger> triggers = new ArrayList<>();
@@ -274,41 +321,12 @@ public class MySQLTable extends MySQLTableBase
             additionalInfo.loaded = true;
             return;
         }
-        MySQLDataSource dataSource = getDataSource();
         try (JDBCSession session = DBUtils.openMetaSession(monitor, this, "Load table status")) {
             try (JDBCPreparedStatement dbStat = session.prepareStatement(
                 "SHOW TABLE STATUS FROM " + DBUtils.getQuotedIdentifier(getContainer()) + " LIKE '" + getName() + "'")) {
                 try (JDBCResultSet dbResult = dbStat.executeQuery()) {
                     if (dbResult.next()) {
-                        // filer table description (for INNODB it contains some system information)
-                        String desc = JDBCUtils.safeGetString(dbResult, MySQLConstants.COL_TABLE_COMMENT);
-                        if (desc != null) {
-                            if (desc.startsWith(INNODB_COMMENT)) {
-                                desc = "";
-                            } else if (!CommonUtils.isEmpty(desc)) {
-                                int divPos = desc.indexOf("; " + INNODB_COMMENT);
-                                if (divPos != -1) {
-                                    desc = desc.substring(0, divPos);
-                                }
-                            }
-                            additionalInfo.description = desc;
-                        }
-                        additionalInfo.engine = dataSource.getEngine(JDBCUtils.safeGetString(dbResult, MySQLConstants.COL_ENGINE));
-                        additionalInfo.rowCount = JDBCUtils.safeGetLong(dbResult, MySQLConstants.COL_ROWS);
-                        additionalInfo.autoIncrement = JDBCUtils.safeGetLong(dbResult, MySQLConstants.COL_AUTO_INCREMENT);
-                        additionalInfo.createTime = JDBCUtils.safeGetTimestamp(dbResult, MySQLConstants.COL_CREATE_TIME);
-                        additionalInfo.updateTime = JDBCUtils.safeGetTimestamp(dbResult, "Update_time");
-                        additionalInfo.checkTime = JDBCUtils.safeGetTimestamp(dbResult, "Check_time");
-                        additionalInfo.collation = dataSource.getCollation(JDBCUtils.safeGetString(dbResult, MySQLConstants.COL_COLLATION));
-                        if (additionalInfo.collation != null) {
-                            additionalInfo.charset = additionalInfo.collation.getCharset();
-                        }
-                        additionalInfo.avgRowLength = JDBCUtils.safeGetLong(dbResult, MySQLConstants.COL_AVG_ROW_LENGTH);
-                        additionalInfo.dataLength = JDBCUtils.safeGetLong(dbResult, MySQLConstants.COL_DATA_LENGTH);
-                        additionalInfo.maxDataLength = JDBCUtils.safeGetLong(dbResult, "Max_data_length");
-                        additionalInfo.dataFree = JDBCUtils.safeGetLong(dbResult, "Data_free");
-                        additionalInfo.indexLength = JDBCUtils.safeGetLong(dbResult, "Index_length");
-                        additionalInfo.rowFormat = JDBCUtils.safeGetString(dbResult, "Row_format");
+                        fetchAdditionalInfo(dbResult);
                     }
                     additionalInfo.loaded = true;
                 }
@@ -316,6 +334,41 @@ public class MySQLTable extends MySQLTableBase
                 throw new DBCException(e, session.getExecutionContext());
             }
         }
+    }
+
+    void fetchAdditionalInfo(JDBCResultSet dbResult) {
+        MySQLDataSource dataSource = getDataSource();
+        // filer table description (for INNODB it contains some system information)
+        String desc = JDBCUtils.safeGetString(dbResult, MySQLConstants.COL_TABLE_COMMENT);
+        if (desc != null) {
+            if (desc.startsWith(INNODB_COMMENT)) {
+                desc = "";
+            } else if (!CommonUtils.isEmpty(desc)) {
+                int divPos = desc.indexOf("; " + INNODB_COMMENT);
+                if (divPos != -1) {
+                    desc = desc.substring(0, divPos);
+                }
+            }
+            additionalInfo.description = desc;
+        }
+        additionalInfo.engine = dataSource.getEngine(JDBCUtils.safeGetString(dbResult, MySQLConstants.COL_ENGINE));
+        additionalInfo.rowCount = JDBCUtils.safeGetLong(dbResult, MySQLConstants.COL_ROWS);
+        additionalInfo.autoIncrement = JDBCUtils.safeGetLong(dbResult, MySQLConstants.COL_AUTO_INCREMENT);
+        additionalInfo.createTime = JDBCUtils.safeGetTimestamp(dbResult, MySQLConstants.COL_CREATE_TIME);
+        additionalInfo.updateTime = JDBCUtils.safeGetTimestamp(dbResult, "Update_time");
+        additionalInfo.checkTime = JDBCUtils.safeGetTimestamp(dbResult, "Check_time");
+        additionalInfo.collation = dataSource.getCollation(JDBCUtils.safeGetString(dbResult, MySQLConstants.COL_COLLATION));
+        if (additionalInfo.collation != null) {
+            additionalInfo.charset = additionalInfo.collation.getCharset();
+        }
+        additionalInfo.avgRowLength = JDBCUtils.safeGetLong(dbResult, MySQLConstants.COL_AVG_ROW_LENGTH);
+        additionalInfo.dataLength = JDBCUtils.safeGetLong(dbResult, MySQLConstants.COL_DATA_LENGTH);
+        additionalInfo.maxDataLength = JDBCUtils.safeGetLong(dbResult, "Max_data_length");
+        additionalInfo.dataFree = JDBCUtils.safeGetLong(dbResult, "Data_free");
+        additionalInfo.indexLength = JDBCUtils.safeGetLong(dbResult, "Index_length");
+        additionalInfo.rowFormat = JDBCUtils.safeGetString(dbResult, "Row_format");
+
+        additionalInfo.loaded = true;
     }
 
     private List<MySQLTableForeignKey> loadForeignKeys(DBRProgressMonitor monitor, boolean references)
@@ -441,7 +494,14 @@ public class MySQLTable extends MySQLTableBase
                             fkList.add(fk);
                         }
                         MySQLTableForeignKeyColumn fkColumnInfo = new MySQLTableForeignKeyColumn(fk, fkColumn, keySeq, pkColumn);
-                        fk.addColumn(fkColumnInfo);
+                        if (fk.hasColumn(fkColumnInfo)) {
+                            // Known MySQL bug, metaData.getImportedKeys() can return duplicates
+                            // https://bugs.mysql.com/bug.php?id=95280
+                            log.debug("FK "+ fkName +" has already been added, skip");
+                        }
+                        else {
+                            fk.addColumn(fkColumnInfo);
+                        }
                     }
                 }
             } finally {
@@ -515,7 +575,10 @@ public class MySQLTable extends MySQLTableBase
 
     @Override
     public DBSObject refreshObject(@NotNull DBRProgressMonitor monitor) throws DBException {
-        getContainer().constraintCache.clearObjectCache(this);
+        getContainer().uniqueKeyCache.clearObjectCache(this);
+        if (getDataSource().supportsCheckConstraints()) {
+            getContainer().checkConstraintCache.clearObjectCache(this);
+        }
         getContainer().indexCache.clearObjectCache(this);
         getContainer().triggerCache.clearChildrenOf(this);
         this.referenceCache = null;

@@ -41,6 +41,8 @@ import org.jkiss.dbeaver.ui.actions.EmptyListAction;
 import org.jkiss.dbeaver.ui.actions.datasource.DataSourceMenuContributor;
 import org.jkiss.dbeaver.ui.editors.IDatabaseEditorInput;
 import org.jkiss.dbeaver.ui.navigator.INavigatorModelView;
+import org.jkiss.dbeaver.ui.navigator.NavigatorUtils;
+import org.jkiss.dbeaver.utils.GeneralUtils;
 import org.jkiss.dbeaver.utils.RuntimeUtils;
 import org.jkiss.utils.CommonUtils;
 
@@ -61,14 +63,15 @@ public class DataSourceToolsContributor extends DataSourceMenuContributor
             return;
         }
         DBSObject selectedObject = null;
-        if (activePart instanceof INavigatorModelView) {
+        INavigatorModelView navigatorModelView = GeneralUtils.adapt(activePart, INavigatorModelView.class);
+        if (navigatorModelView != null) {
             final ISelectionProvider selectionProvider = activePart.getSite().getSelectionProvider();
             if (selectionProvider != null) {
                 ISelection selection = selectionProvider.getSelection();
                 if (selection instanceof IStructuredSelection && !selection.isEmpty()) {
                     selectedObject = RuntimeUtils.getObjectAdapter(((IStructuredSelection) selection).getFirstElement(), DBSObject.class);
 
-                    List<ToolDescriptor> tools = ToolsRegistry.getInstance().getTools((IStructuredSelection) selection);
+                    List<ToolDescriptor> tools = getAvailableTools((IStructuredSelection) selection);
                     fillToolsMenu(menuItems, tools, selection);
                 }
             }
@@ -102,6 +105,29 @@ public class DataSourceToolsContributor extends DataSourceMenuContributor
             menuItems.add(new Separator());
             menuItems.add(ActionUtils.makeCommandContribution(activePart.getSite(), DatabaseTasksView.CREATE_TASK_CMD_ID));
         }
+    }
+
+    private List<ToolDescriptor> getAvailableTools(IStructuredSelection selection) {
+        List<DBSObject> objects = NavigatorUtils.getSelectedObjects(selection);
+        List<ToolDescriptor> result = new ArrayList<>();
+        if (!objects.isEmpty()) {
+            for (ToolDescriptor descriptor : ToolsRegistry.getInstance().getTools()) {
+                if (descriptor.isSingleton() && objects.size() > 1) {
+                    continue;
+                }
+                boolean applies = true;
+                for (DBSObject object : objects) {
+                    if (!descriptor.appliesTo(object)) {
+                        applies = false;
+                        break;
+                    }
+                }
+                if (applies) {
+                    result.add(descriptor);
+                }
+            }
+        }
+        return result;
     }
 
     private void findObjectNodes(DBXTreeNode meta, List<DBXTreeObject> editors, Set<DBXTreeNode> processedNodes) {
@@ -259,7 +285,9 @@ public class DataSourceToolsContributor extends DataSourceMenuContributor
         @Override
         public boolean equals(Object obj) {
             return obj == this ||
-                (obj instanceof DataSourceEditorInput && ((DataSourceEditorInput) obj).editor == editor);
+                (obj instanceof DataSourceEditorInput &&
+                    ((DataSourceEditorInput) obj).dataSource == dataSource &&
+                    ((DataSourceEditorInput) obj).editor == editor);
         }
 
     }

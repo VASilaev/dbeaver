@@ -100,10 +100,13 @@ public class CompileHandler extends OracleTaskHandler
                 Throwable error = null;
                 try {
                     UIUtils.runInProgressService(monitor -> {
+                        monitor.beginTask("Compile", 1);
                         try {
                             compileUnit(monitor, compileLog, unit);
                         } catch (DBCException e) {
                             throw new InvocationTargetException(e);
+                        } finally {
+                            monitor.done();
                         }
                     });
                     if (compileLog.getError() != null) {
@@ -202,7 +205,7 @@ public class CompileHandler extends OracleTaskHandler
     {
         final DBEPersistAction[] compileActions = unit.getCompileActions(monitor);
         if (ArrayUtils.isEmpty(compileActions)) {
-            return true;
+            throw new DBCException("No compile actions associated with " + unit.getSourceType().name());
         }
 
         try (JDBCSession session = DBUtils.openUtilSession(monitor, unit, "Compile '" + unit.getName() + "'")) {

@@ -48,7 +48,7 @@ public class SocksProxyConfiguratorUI implements IObjectPropertyConfigurator<DBW
         composite.setLayout(new GridLayout(1, true));
         composite.setLayoutData(new GridData(GridData.FILL_BOTH));
 
-        createSocksGroup(parent);
+        createSocksGroup(composite);
     }
 
     protected void createSocksGroup(Composite parent) {
@@ -59,7 +59,7 @@ public class SocksProxyConfiguratorUI implements IObjectPropertyConfigurator<DBW
 
         portText = UIUtils.createLabelSpinner(composite, UIConnectionMessages.dialog_connection_network_socket_label_port, SocksConstants.DEFAULT_SOCKS_PORT, 0, 65535);
         GridData gd = new GridData(GridData.HORIZONTAL_ALIGN_BEGINNING);
-        gd.widthHint = 50;
+        gd.widthHint = UIUtils.getFontHeight(portText) * 7;
         portText.setLayoutData(gd);
 
         userNameText = UIUtils.createLabelText(composite, UIConnectionMessages.dialog_connection_network_socket_label_username, null); //$NON-NLS-2$
@@ -88,9 +88,9 @@ public class SocksProxyConfiguratorUI implements IObjectPropertyConfigurator<DBW
     @Override
     public void saveSettings(DBWHandlerConfiguration configuration)
     {
-        configuration.setProperty(SocksConstants.PROP_HOST, hostText.getText());
+        configuration.setProperty(SocksConstants.PROP_HOST, hostText.getText().trim());
         configuration.setProperty(SocksConstants.PROP_PORT, portText.getSelection());
-        configuration.setUserName(userNameText.getText());
+        configuration.setUserName(userNameText.getText().trim());
         configuration.setPassword(passwordText.getText());
         configuration.setSavePassword(savePasswordCheckbox.getSelection());
     }

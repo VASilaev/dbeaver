@@ -16,17 +16,8 @@
  */
 package org.jkiss.dbeaver.ext.spanner.model;
 
-import org.jkiss.code.NotNull;
-import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.ext.generic.model.meta.GenericMetaModel;
-import org.jkiss.dbeaver.model.DBPErrorAssistant;
-import org.jkiss.dbeaver.model.exec.DBCQueryTransformProvider;
-import org.jkiss.dbeaver.model.exec.DBCQueryTransformType;
-import org.jkiss.dbeaver.model.exec.DBCQueryTransformer;
-import org.jkiss.dbeaver.model.impl.sql.QueryTransformerLimit;
-import org.jkiss.utils.CommonUtils;
 
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -34,26 +25,15 @@ import java.util.regex.Pattern;
  */
 public class SpannerMetaModel extends GenericMetaModel {
 
-    private Pattern ERROR_POSITION_PATTERN = Pattern.compile(" at \\[([0-9]+)\\:([0-9]+)\\]");
-
     public SpannerMetaModel() {
     }
-
-/*
-    @Override
-    public DBPErrorAssistant.ErrorPosition getErrorPosition(Throwable error) {
-        String message = error.getMessage();
-        if (!CommonUtils.isEmpty(message)) {
-            Matcher matcher = ERROR_POSITION_PATTERN.matcher(message);
-            if (matcher.find()) {
-                DBPErrorAssistant.ErrorPosition pos = new DBPErrorAssistant.ErrorPosition();
-                pos.line = Integer.parseInt(matcher.group(1)) - 1;
-                pos.position = Integer.parseInt(matcher.group(2)) - 1;
-                return pos;
-            }
-        }
-        return null;
+    
+    // The default schema in Cloud Spanner is an empty string. This ensures that this
+    // default schema will be shown as 'DEFAULT' in DBeaver, and enables auto complete
+    // for tables and views in both the DEFAULT schema, as well as the INFORMATION_SCHEMA
+    // and SPANNER_SYS schemas.
+    public boolean supportsNullSchemas() {
+        return true;
     }
-*/
 
 }

@@ -111,6 +111,10 @@ import java.util.*;
  */
 public class SpreadsheetPresentation extends AbstractPresentation implements IResultSetEditor, ISelectionProvider, IStatefulControl, IAdaptable, IGridController {
 
+    public static final String PRESENTATION_ID = "spreadsheet";
+
+    public static final String ATTR_OPTION_PINNED = "pinned";
+
     private static final Log log = Log.getLog(SpreadsheetPresentation.class);
 
     private Spreadsheet spreadsheet;
@@ -127,13 +131,10 @@ public class SpreadsheetPresentation extends AbstractPresentation implements IRe
     private Color backgroundAdded;
     private Color backgroundDeleted;
     private Color backgroundModified;
-    private Color backgroundError;
     private Color backgroundNormal;
     private Color backgroundOdd;
     private Color backgroundReadOnly;
     private Color foregroundDefault;
-    private Color foregroundNull;
-    private final Map<DBPDataKind, Color> dataTypesForegrounds = new IdentityHashMap<>();
     private Color foregroundSelected, backgroundSelected;
     private Color backgroundMatched;
     private Color cellHeaderForeground, cellHeaderBackground, cellHeaderSelectionBackground;
@@ -148,7 +149,6 @@ public class SpreadsheetPresentation extends AbstractPresentation implements IRe
     private boolean showAttributeDescription;
     private boolean calcColumnWidthByValue;
 
-    private boolean colorizeDataTypes = true;
     private boolean rightJustifyNumbers = true;
     private boolean rightJustifyDateTime = true;
     private boolean showBooleanAsCheckbox;
@@ -158,6 +158,7 @@ public class SpreadsheetPresentation extends AbstractPresentation implements IRe
     private int highlightScopeFirstLine;
     private int highlightScopeLastLine;
     private Color highlightScopeColor;
+    private boolean useNativeNumbersFormat;
 
     public SpreadsheetPresentation() {
         findReplaceTarget = new SpreadsheetFindReplaceTarget(this);
@@ -168,6 +169,22 @@ public class SpreadsheetPresentation extends AbstractPresentation implements IRe
         return spreadsheet;
     }
 
+    public boolean isShowOddRows() {
+        return showOddRows;
+    }
+
+    public void setShowOddRows(boolean showOddRows) {
+        this.showOddRows = showOddRows;
+    }
+
+    public boolean isAutoFetchSegments() {
+        return autoFetchSegments;
+    }
+
+    public void setAutoFetchSegments(boolean autoFetchSegments) {
+        this.autoFetchSegments = autoFetchSegments;
+    }
+
     @Nullable
     DBPDataSource getDataSource() {
         DBSDataContainer dataContainer = controller.getDataContainer();
@@ -176,12 +193,11 @@ public class SpreadsheetPresentation extends AbstractPresentation implements IRe
 
     @Override
     public boolean isDirty() {
-        boolean hasActiveEditor =
-            activeInlineEditor != null &&
+        return activeInlineEditor != null &&
             activeInlineEditor.getControl() != null &&
             !activeInlineEditor.getControl().isDisposed() &&
-            !getController().getModel().isAttributeReadOnly(getCurrentAttribute());
-        return hasActiveEditor;
+            !DBExecUtils.isAttributeReadOnly(getCurrentAttribute()) &&
+            !(activeInlineEditor instanceof IValueEditorStandalone);
     }
 
     @Override
@@ -239,7 +255,7 @@ public class SpreadsheetPresentation extends AbstractPresentation implements IRe
 
         activateTextKeyBindings(controller, spreadsheet);
 
-        applyThemeSettings();
+        applyCurrentThemeSettings();
 
         trackPresentationControl();
         TextEditorUtils.enableHostEditorKeyBindingsSupport(controller.getSite(), spreadsheet);
@@ -316,6 +332,7 @@ public class SpreadsheetPresentation extends AbstractPresentation implements IRe
             // Update controls
             controller.updateEditControls();
             controller.updateStatusMessage();
+            controller.updatePanelsContent(false);
 
             if (recordMode) {
                 // Refresh meta if we are in record mode
@@ -343,7 +360,9 @@ public class SpreadsheetPresentation extends AbstractPresentation implements IRe
         GridCell cell = controller.isRecordMode() ?
             new GridCell(curRow, this.curAttribute) :
             new GridCell(this.curAttribute, curRow);
-        this.spreadsheet.setCursor(cell, false, true);
+        UIUtils.asyncExec(() -> {
+            this.spreadsheet.setCursor(cell, false, true);
+        });
         //this.spreadsheet.showColumn(this.curAttribute);
     }
 
@@ -558,18 +577,19 @@ public class SpreadsheetPresentation extends AbstractPresentation implements IRe
                 try (DBCSession session = DBUtils.openUtilSession(new VoidProgressMonitor(), controller.getDataContainer(), "Advanced paste")) {
 
                     String[][] newLines = parseGridLines(strValue);
-                    // Create new rows on demand
-                    if (overNewRow) {
+
+                    // FIXME: do not create rows twice! Probably need to delete comment after testing. #9095
+                    /*if (overNewRow) {
                         for (int i = 0 ; i < newLines.length - 1; i++) {
                             controller.addNewRow(false, true, false);
                         }
                         spreadsheet.refreshRowsData();
-                    } else {
+                    } else {*/
                         while (rowNum + newLines.length > spreadsheet.getItemCount()) {
                             controller.addNewRow(false, true, false);
                             spreadsheet.refreshRowsData();
                         }
-                    }
+                    //}
                     if (rowNum < 0 || rowNum >= spreadsheet.getItemCount()) {
                         return;
                     }
@@ -640,6 +660,7 @@ public class SpreadsheetPresentation extends AbstractPresentation implements IRe
             }
             controller.redrawData(false, true);
             controller.updateEditControls();
+            controller.updatePanelsContent(false);
         }
         catch (Exception e) {
             DBWorkbench.getPlatformUI().showError("Cannot replace cell value", null, e);
@@ -731,7 +752,6 @@ public class SpreadsheetPresentation extends AbstractPresentation implements IRe
         DBPPreferenceStore preferenceStore = getPreferenceStore();
         showOddRows = preferenceStore.getBoolean(ResultSetPreferences.RESULT_SET_SHOW_ODD_ROWS);
         //showCelIcons = preferenceStore.getBoolean(ResultSetPreferences.RESULT_SET_SHOW_CELL_ICONS);
-        colorizeDataTypes = preferenceStore.getBoolean(ResultSetPreferences.RESULT_SET_COLORIZE_DATA_TYPES);
         rightJustifyNumbers = preferenceStore.getBoolean(ResultSetPreferences.RESULT_SET_RIGHT_JUSTIFY_NUMBERS);
         rightJustifyDateTime = preferenceStore.getBoolean(ResultSetPreferences.RESULT_SET_RIGHT_JUSTIFY_DATETIME);
         rowBatchSize = preferenceStore.getInt(ResultSetPreferences.RESULT_SET_ROW_BATCH_SIZE);
@@ -739,11 +759,14 @@ public class SpreadsheetPresentation extends AbstractPresentation implements IRe
         showAttrOrdering = preferenceStore.getBoolean(ResultSetPreferences.RESULT_SET_SHOW_ATTR_ORDERING);
         showAttributeIcons = controller.getPreferenceStore().getBoolean(ResultSetPreferences.RESULT_SET_SHOW_ATTR_ICONS);
         showAttributeDescription = getPreferenceStore().getBoolean(ResultSetPreferences.RESULT_SET_SHOW_DESCRIPTION);
-        supportsAttributeFilter = (controller.getDataContainer().getSupportedFeatures() & DBSDataContainer.DATA_FILTER) != 0 &&
+        supportsAttributeFilter =
+            (controller.getDecorator().getDecoratorFeatures() & IResultSetDecorator.FEATURE_FILTERS) != 0 &&
+            (controller.getDataContainer().getSupportedFeatures() & DBSDataContainer.DATA_FILTER) != 0 &&
             controller.getPreferenceStore().getBoolean(ResultSetPreferences.RESULT_SET_SHOW_ATTR_FILTERS);
         autoFetchSegments = controller.getPreferenceStore().getBoolean(ResultSetPreferences.RESULT_SET_AUTO_FETCH_NEXT_SEGMENT);
         calcColumnWidthByValue = getPreferenceStore().getBoolean(ResultSetPreferences.RESULT_SET_CALC_COLUMN_WIDTH_BY_VALUES);
         showBooleanAsCheckbox = preferenceStore.getBoolean(ResultSetPreferences.RESULT_SET_SHOW_BOOLEAN_AS_CHECKBOX);
+        useNativeNumbersFormat = controller.getPreferenceStore().getBoolean(ModelPreferences.RESULT_NATIVE_NUMERIC_FORMAT);
 
         spreadsheet.setColumnScrolling(!getPreferenceStore().getBoolean(ResultSetPreferences.RESULT_SET_USE_SMOOTH_SCROLLING));
 
@@ -826,9 +849,28 @@ public class SpreadsheetPresentation extends AbstractPresentation implements IRe
                 selectedColumns.add(attr);
             }
             if (!controller.isRecordMode() && !selectedColumns.isEmpty()) {
+                manager.insertBefore(IResultSetController.MENU_GROUP_ADDITIONS, new Separator());
                 {
-                    manager.insertBefore(IResultSetController.MENU_GROUP_ADDITIONS, new Separator());
-
+                    // Pin/unpin
+                    DBDDataFilter dataFilter = controller.getModel().getDataFilter();
+                    DBDAttributeConstraint ac = dataFilter.getConstraint(attr.getTopParent());
+                    if (ac != null) {
+                        Integer pinnedIndex = ac.getOption(ATTR_OPTION_PINNED);
+                        manager.insertBefore(IResultSetController.MENU_GROUP_ADDITIONS, new Action(pinnedIndex != null ? "Unpin column" : "Pin column") {
+                            @Override
+                            public void run() {
+                                if (pinnedIndex != null) {
+                                    ac.removeOption(ATTR_OPTION_PINNED);
+                                } else {
+                                    ac.setOption(ATTR_OPTION_PINNED, getMaxPinIndex(dataFilter) + 1);
+                                }
+                                spreadsheet.refreshData(true, true, false);
+                            }
+                        });
+                    }
+                }
+                {
+                    // Hide/show
                     List<DBDAttributeBinding> hiddenAttributes = new ArrayList<>();
                     List<DBDAttributeConstraint> constraints = getController().getModel().getDataFilter().getConstraints();
                     for (DBDAttributeConstraint ac : constraints) {
@@ -892,6 +934,17 @@ public class SpreadsheetPresentation extends AbstractPresentation implements IRe
                         SpreadsheetCommandHandler.CMD_COLUMNS_FIT_SCREEN));
             }
         }
+    }
+
+    private static int getMaxPinIndex(DBDDataFilter dataFilter) {
+        int maxIndex = 0;
+        for (DBDAttributeConstraint ac : dataFilter.getConstraints()) {
+            Integer pinIndex = ac.getOption(ATTR_OPTION_PINNED);
+            if (pinIndex != null) {
+                maxIndex = Math.max(maxIndex, pinIndex);
+            }
+        }
+        return maxIndex;
     }
 
     /////////////////////////////////////////////////
@@ -1030,8 +1083,7 @@ public class SpreadsheetPresentation extends AbstractPresentation implements IRe
         return null;
     }
 
-    public void resetCellValue(@NotNull Object colElement, @NotNull Object rowElement, boolean delete)
-    {
+    public void resetCellValue(@NotNull Object colElement, @NotNull Object rowElement, boolean delete) {
         boolean recordMode = controller.isRecordMode();
         final DBDAttributeBinding attr = (DBDAttributeBinding)(recordMode ? rowElement : colElement);
         final ResultSetRow row = (ResultSetRow)(recordMode ? colElement : rowElement);
@@ -1120,9 +1172,8 @@ public class SpreadsheetPresentation extends AbstractPresentation implements IRe
     // Themes
 
     @Override
-    protected void applyThemeSettings()
+    protected void applyThemeSettings(ITheme currentTheme)
     {
-        ITheme currentTheme = themeManager.getCurrentTheme();
         Font rsFont = currentTheme.getFontRegistry().get(ThemeConstants.FONT_SQL_RESULT_SET);
         if (rsFont != null) {
             this.spreadsheet.setFont(rsFont);
@@ -1139,7 +1190,6 @@ public class SpreadsheetPresentation extends AbstractPresentation implements IRe
         this.backgroundAdded = colorRegistry.get(ThemeConstants.COLOR_SQL_RESULT_CELL_NEW_BACK);
         this.backgroundDeleted = colorRegistry.get(ThemeConstants.COLOR_SQL_RESULT_CELL_DELETED_BACK);
         this.backgroundModified = colorRegistry.get(ThemeConstants.COLOR_SQL_RESULT_CELL_MODIFIED_BACK);
-        this.backgroundError = colorRegistry.get(ThemeConstants.COLOR_SQL_RESULT_CELL_ERROR_BACK);
         this.backgroundOdd = colorRegistry.get(ThemeConstants.COLOR_SQL_RESULT_CELL_ODD_BACK);
         this.backgroundReadOnly = colorRegistry.get(ThemeConstants.COLOR_SQL_RESULT_CELL_READ_ONLY);
         this.foregroundSelected = colorRegistry.get(ThemeConstants.COLOR_SQL_RESULT_SET_SELECTION_FORE);
@@ -1160,14 +1210,6 @@ public class SpreadsheetPresentation extends AbstractPresentation implements IRe
                     50);
             this.cellHeaderSelectionBackground = new Color(getSpreadsheet().getDisplay(), cellSel);
         }
-        this.foregroundNull = colorRegistry.get(ThemeConstants.COLOR_SQL_RESULT_NULL_FOREGROUND);
-        this.dataTypesForegrounds.put(DBPDataKind.BINARY, colorRegistry.get(ThemeConstants.COLOR_SQL_RESULT_BINARY_FOREGROUND));
-        this.dataTypesForegrounds.put(DBPDataKind.BOOLEAN, colorRegistry.get(ThemeConstants.COLOR_SQL_RESULT_BOOLEAN_FOREGROUND));
-        this.dataTypesForegrounds.put(DBPDataKind.DATETIME, colorRegistry.get(ThemeConstants.COLOR_SQL_RESULT_DATETIME_FOREGROUND));
-        this.dataTypesForegrounds.put(DBPDataKind.NUMERIC, colorRegistry.get(ThemeConstants.COLOR_SQL_RESULT_NUMERIC_FOREGROUND));
-        this.dataTypesForegrounds.put(DBPDataKind.STRING, colorRegistry.get(ThemeConstants.COLOR_SQL_RESULT_STRING_FOREGROUND));
-
-
         this.spreadsheet.setLineColor(colorRegistry.get(ThemeConstants.COLOR_SQL_RESULT_LINES_NORMAL));
         this.spreadsheet.setLineSelectedColor(colorRegistry.get(ThemeConstants.COLOR_SQL_RESULT_LINES_SELECTED));
 
@@ -1586,6 +1628,7 @@ public class SpreadsheetPresentation extends AbstractPresentation implements IRe
                 switch (binding.getAttribute().getDataKind()) {
                     case STRUCT:
                     case DOCUMENT:
+                    case ANY:
                         return ElementState.EXPANDED;
                     case ARRAY:
                         ResultSetRow curRow = controller.getCurrentRow();
@@ -1623,6 +1666,19 @@ public class SpreadsheetPresentation extends AbstractPresentation implements IRe
         }
 
         @Override
+        public int getColumnPinIndex(@NotNull Object element) {
+            if (!controller.isRecordMode()) {
+                DBDAttributeBinding attr = (DBDAttributeBinding)element;
+                DBDAttributeConstraint ac = controller.getModel().getDataFilter().getConstraint(attr);
+                if (ac != null) {
+                    Integer pinIndex = ac.getOption(ATTR_OPTION_PINNED);
+                    return pinIndex == null ? -1 : pinIndex;
+                }
+            }
+            return -1;
+        }
+
+        @Override
         public boolean isElementSupportsFilter(Object element) {
             if (element instanceof DBDAttributeBinding) {
                 return supportsAttributeFilter;
@@ -1656,20 +1712,22 @@ public class SpreadsheetPresentation extends AbstractPresentation implements IRe
             int state = STATE_NONE;
             boolean recordMode = controller.isRecordMode();
             DBDAttributeBinding attr = (DBDAttributeBinding)(recordMode ? rowElement : colElement);
-            ResultSetRow row = (ResultSetRow)(recordMode ? colElement : rowElement);
-            Object value = controller.getModel().getCellValue(attr, row);
-            if (isShowAsCheckbox(attr)) {
-                state |= STATE_LINK;
-            } else if (!CommonUtils.isEmpty(attr.getReferrers()) && !DBUtils.isNullValue(value)) {
-                state |= STATE_LINK;
-            } else {
-                String strValue = cellText != null ? cellText : attr.getValueHandler().getValueDisplayString(attr, value, DBDDisplayFormat.UI);
-                if (strValue.contains("://")) {
-                    try {
-                        new URL(strValue);
-                        state |= STATE_HYPER_LINK;
-                    } catch (MalformedURLException e) {
-                        // Not a hyperlink
+            if ((controller.getDecorator().getDecoratorFeatures() & IResultSetDecorator.FEATURE_LINKS) != 0) {
+                ResultSetRow row = (ResultSetRow) (recordMode ? colElement : rowElement);
+                Object value = controller.getModel().getCellValue(attr, row);
+                if (isShowAsCheckbox(attr)) {
+                    state |= STATE_LINK;
+                } else if (!CommonUtils.isEmpty(attr.getReferrers()) && !DBUtils.isNullValue(value)) {
+                    state |= STATE_LINK;
+                } else {
+                    String strValue = cellText != null ? cellText : attr.getValueHandler().getValueDisplayString(attr, value, DBDDisplayFormat.UI);
+                    if (strValue.contains("://")) {
+                        try {
+                            new URL(strValue);
+                            state |= STATE_HYPER_LINK;
+                        } catch (MalformedURLException e) {
+                            // Not a hyperlink
+                        }
                     }
                 }
             }
@@ -1723,10 +1781,14 @@ public class SpreadsheetPresentation extends AbstractPresentation implements IRe
                         return "[" + ((DBDComposite) value).getDataType().getName() + "]";
                     }
                 }
-                return attr.getValueRenderer().getValueDisplayString(
-                    attr.getAttribute(),
-                    value,
-                    getValueRenderFormat(attr, value));
+                try {
+                    return attr.getValueRenderer().getValueDisplayString(
+                        attr.getAttribute(),
+                        value,
+                        getValueRenderFormat(attr, value));
+                } catch (Exception e) {
+                    return new DBDValueError(e);
+                }
             } else {
                 return value;
             }
@@ -1771,36 +1833,18 @@ public class SpreadsheetPresentation extends AbstractPresentation implements IRe
             if (selected) {
                 return foregroundSelected;
             }
-            ResultSetRow row = (ResultSetRow) (!controller.isRecordMode() ?  rowElement : colElement);
-            if (row.colorInfo != null) {
-                if (row.colorInfo.cellFgColors != null) {
-                    Color cellFG = row.colorInfo.cellFgColors[((DBDAttributeBinding) (rowElement instanceof DBDAttributeBinding ? rowElement : colElement)).getOrdinalPosition()];
-                    if (cellFG != null) {
-                        return cellFG;
-                    }
-                }
-                if (row.colorInfo.rowForeground != null) {
-                    return row.colorInfo.rowForeground;
-                }
-            }
+            boolean recordMode = controller.isRecordMode();
+            ResultSetRow row = (ResultSetRow) (!recordMode ?  rowElement : colElement);
+            DBDAttributeBinding attribute = (DBDAttributeBinding)(!recordMode ?  colElement : rowElement);
 
-            Object value = getCellValue(colElement, rowElement, false, false);
-            if (DBUtils.isNullValue(value)) {
-                return foregroundNull;
-            } else {
-                if (colorizeDataTypes) {
-                    DBDAttributeBinding attr =
-                            (DBDAttributeBinding)(rowElement instanceof DBDAttributeBinding ? rowElement : colElement);
-                    Color color = dataTypesForegrounds.get(attr.getDataKind());
-                    if (color != null) {
-                        return color;
-                    }
-                }
-                if (foregroundDefault == null) {
-                    foregroundDefault = controller.getDefaultForeground();
-                }
-                return foregroundDefault;
+            Color fg = controller.getLabelProvider().getCellForeground(attribute, row);
+            if (fg != null) {
+                return fg;
             }
+            if (foregroundDefault == null) {
+                foregroundDefault = controller.getDefaultForeground();
+            }
+            return foregroundDefault;
         }
 
         @Nullable
@@ -1849,25 +1893,11 @@ public class SpreadsheetPresentation extends AbstractPresentation implements IRe
                 return backgroundModified;
             }
 
-            if (row.colorInfo != null) {
-                if (row.colorInfo.cellBgColors != null) {
-                    Color cellBG = row.colorInfo.cellBgColors[((DBDAttributeBinding) (rowElement instanceof DBDAttributeBinding ? rowElement : colElement)).getOrdinalPosition()];
-                    if (cellBG != null) {
-                        return cellBG;
-                    }
-                }
-                if (row.colorInfo.rowBackground != null) {
-                    return row.colorInfo.rowBackground;
-                }
+            Color bg = controller.getLabelProvider().getCellBackground(attribute, row);
+            if (bg != null) {
+                return bg;
             }
 
-            Object value = controller.getModel().getCellValue(attribute, row);
-            if (value != null && value.getClass() == DBDValueError.class) {
-                return backgroundError;
-            }
-//            if (attribute.getValueHandler() instanceof DBDValueHandlerComposite) {
-//                return backgroundReadOnly;
-//            }
             if (!recordMode && showOddRows) {
                 // Determine odd/even row
                 if (rowBatchSize < 1) {
@@ -1939,7 +1969,7 @@ public class SpreadsheetPresentation extends AbstractPresentation implements IRe
     }
 
     private DBDDisplayFormat getValueRenderFormat(DBDAttributeBinding attr, Object value) {
-        if (value instanceof Number && controller.getPreferenceStore().getBoolean(ModelPreferences.RESULT_NATIVE_NUMERIC_FORMAT)) {
+        if (value instanceof Number && useNativeNumbersFormat) {
             return DBDDisplayFormat.NATIVE;
         }
         return DBDDisplayFormat.UI;

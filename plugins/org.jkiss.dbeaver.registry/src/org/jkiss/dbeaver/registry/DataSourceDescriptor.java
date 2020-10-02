@@ -33,7 +33,7 @@ import org.jkiss.dbeaver.model.app.DBPPlatform;
 import org.jkiss.dbeaver.model.app.DBPProject;
 import org.jkiss.dbeaver.model.connection.*;
 import org.jkiss.dbeaver.model.data.DBDDataFormatterProfile;
-import org.jkiss.dbeaver.model.data.DBDPreferences;
+import org.jkiss.dbeaver.model.data.DBDFormatSettings;
 import org.jkiss.dbeaver.model.data.DBDValueHandler;
 import org.jkiss.dbeaver.model.exec.DBCException;
 import org.jkiss.dbeaver.model.exec.DBCExecutionContext;
@@ -89,6 +89,7 @@ public class DataSourceDescriptor
         {DBPConnectionConfiguration.VARIABLE_USER, "database user name"},
         {DBPConnectionConfiguration.VARIABLE_PASSWORD, "database password (plain)"},
         {DBPConnectionConfiguration.VARIABLE_URL, "connection URL"},
+        {DBPConnectionConfiguration.VARIABLE_CONN_TYPE, "connection type"},
 
         {DBPConnectionConfiguration.VAR_PROJECT_PATH, "project path"},
         {DBPConnectionConfiguration.VAR_PROJECT_NAME, "project name"},
@@ -106,7 +107,7 @@ public class DataSourceDescriptor
     @NotNull
     private final DBPDataSourceConfigurationStorage origin;
     @NotNull
-    private DriverDescriptor driver;
+    private DBPDriver driver;
     @NotNull
     private DBPConnectionConfiguration connectionInfo;
     // Copy of connection info with resolved params (cache)
@@ -140,6 +141,8 @@ public class DataSourceDescriptor
     private volatile boolean disposed = false;
     private volatile boolean connecting = false;
     private boolean temporary;
+    private boolean hidden;
+    private boolean template;
     private final List<DBRProcessDescriptor> childProcesses = new ArrayList<>();
     private DBWNetworkHandler proxyHandler;
     private DBWTunnel tunnelHandler;
@@ -151,17 +154,17 @@ public class DataSourceDescriptor
     public DataSourceDescriptor(
         @NotNull DBPDataSourceRegistry registry,
         @NotNull String id,
-        @NotNull DriverDescriptor driver,
+        @NotNull DBPDriver driver,
         @NotNull DBPConnectionConfiguration connectionInfo)
     {
         this(registry, ((DataSourceRegistry)registry).getDefaultOrigin(), id, driver, connectionInfo);
     }
 
-    DataSourceDescriptor(
+    public DataSourceDescriptor(
         @NotNull DBPDataSourceRegistry registry,
         @NotNull DBPDataSourceConfigurationStorage origin,
         @NotNull String id,
-        @NotNull DriverDescriptor driver,
+        @NotNull DBPDriver driver,
         @NotNull DBPConnectionConfiguration connectionInfo)
     {
         this.registry = registry;
@@ -195,7 +198,6 @@ public class DataSourceDescriptor
         this.connectionReadOnly = source.connectionReadOnly;
         this.driver = source.driver;
         this.connectionInfo = source.connectionInfo;
-        this.formatterProfile = source.formatterProfile;
         this.clientHome = source.clientHome;
 
         this.connectionModifyRestrictions = source.connectionModifyRestrictions == null ? null : new ArrayList<>(source.connectionModifyRestrictions);
@@ -205,11 +207,23 @@ public class DataSourceDescriptor
             this.filterMap.put(fe.getKey(), new FilterMapping(fe.getValue()));
         }
         this.lockPasswordHash = source.lockPasswordHash;
-        this.folder = source.folder;
+        if (source.getRegistry() == registry) {
+            this.folder = source.folder;
+        } else if (source.folder != null) {
+            // Cross-registry copy
+            this.folder = (DataSourceFolder) registry.getFolder(source.folder.getFolderPath());
+        }
 
         this.preferenceStore = new DataSourcePreferenceStore(this);
         this.preferenceStore.setProperties(source.preferenceStore.getProperties());
         this.preferenceStore.setDefaultProperties(source.preferenceStore.getDefaultProperties());
+
+        if (source.formatterProfile == null || source.formatterProfile.getProfileName().equals(source.getId())) {
+            this.formatterProfile = null;
+        } else {
+            this.formatterProfile = new DataFormatterProfile(source.formatterProfile.getProfileName(), preferenceStore);
+        }
+
         this.virtualModel = new DBVModel(this, source.virtualModel);
     }
 
@@ -238,13 +252,13 @@ public class DataSourceDescriptor
         return id;
     }
 
-    public void setId(String id) {
+    public void setId(@NotNull String id) {
         this.id = id;
     }
 
     @NotNull
     @Override
-    public DriverDescriptor getDriver()
+    public DBPDriver getDriver()
     {
         return driver;
     }
@@ -574,12 +588,35 @@ public class DataSourceDescriptor
     }
 
     @Override
+    public boolean isExternallyProvided() {
+        return origin.isDynamic();
+    }
+
+    @Override
+    public boolean isTemplate() {
+        return template;
+    }
+
+    public void setTemplate(boolean template) {
+        this.template = template;
+    }
+
+    @Override
     public boolean isTemporary() {
         return temporary;
     }
 
     public void setTemporary(boolean temporary) {
         this.temporary = temporary;
+    }
+
+    @Override
+    public boolean isHidden() {
+        return hidden;
+    }
+
+    public void setHidden(boolean hidden) {
+        this.hidden = hidden;
     }
 
     @Override
@@ -1103,17 +1140,26 @@ public class DataSourceDescriptor
     }
 
     @Override
-    public void setDataFormatterProfile(DBDDataFormatterProfile formatterProfile)
-    {
-        this.formatterProfile = formatterProfile;
+    public boolean isUseNativeDateTimeFormat() {
+        return getPreferenceStore().getBoolean(ModelPreferences.RESULT_NATIVE_DATETIME_FORMAT);
+    }
+
+    @Override
+    public boolean isUseNativeNumericFormat() {
+        return getPreferenceStore().getBoolean(ModelPreferences.RESULT_NATIVE_NUMERIC_FORMAT);
+    }
+
+    @Override
+    public boolean isUseScientificNumericFormat() {
+        return getPreferenceStore().getBoolean(ModelPreferences.RESULT_SCIENTIFIC_NUMERIC_FORMAT);
     }
 
     @NotNull
     @Override
     public DBDValueHandler getDefaultValueHandler()
     {
-        if (dataSource instanceof DBDPreferences) {
-            return ((DBDPreferences) dataSource).getDefaultValueHandler();
+        if (dataSource instanceof DBDFormatSettings) {
+            return ((DBDFormatSettings) dataSource).getDefaultValueHandler();
         }
         return DefaultValueHandler.INSTANCE;
     }
@@ -1144,7 +1190,7 @@ public class DataSourceDescriptor
                 for (DBSInstance instance : dataSource.getAvailableInstances()) {
                     for (DBCExecutionContext context : instance.getAllContexts()) {
                         conIndex++;
-                        coll.addProperty("Connections", conIndex, String.valueOf(conIndex), new ContextInfo(context));
+                        coll.addProperty("Connections", String.valueOf(conIndex), String.valueOf(conIndex), new ContextInfo(context));
                     }
                 }
             }
@@ -1325,6 +1371,10 @@ public class DataSourceDescriptor
             CommonUtils.equalsContents(this.connectionModifyRestrictions, source.connectionModifyRestrictions);
     }
 
+    public boolean isDetached() {
+        return hidden || temporary;
+    }
+
     public static class ContextInfo implements DBPObject {
         private final DBCExecutionContext context;
 
@@ -1361,6 +1411,7 @@ public class DataSourceDescriptor
                 case DBPConnectionConfiguration.VARIABLE_USER: return configuration.getUserName();
                 case DBPConnectionConfiguration.VARIABLE_PASSWORD: return configuration.getUserPassword();
                 case DBPConnectionConfiguration.VARIABLE_URL: return configuration.getUrl();
+                case DBPConnectionConfiguration.VARIABLE_CONN_TYPE: return configuration.getConnectionType().getId();
                 default: return SystemVariablesResolver.INSTANCE.get(name);
             }
         };
@@ -1397,6 +1448,7 @@ public class DataSourceDescriptor
             }
             networkHandler.setPassword(authInfo.getUserPassword());
             networkHandler.setSavePassword(authInfo.isSavePassword());
+            dataSourceContainer.getConnectionConfiguration().updateHandler(networkHandler);
         } else {
             if (!passwordOnly) {
                 dataSourceContainer.getConnectionConfiguration().setUserName(authInfo.getUserName());

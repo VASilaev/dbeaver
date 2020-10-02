@@ -33,7 +33,6 @@ import org.jkiss.dbeaver.model.struct.cache.AbstractObjectCache;
 
 import java.sql.SQLException;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 
@@ -67,7 +66,7 @@ public abstract class JDBCObjectCache<OWNER extends DBSObject, OBJECT extends DB
 
     @NotNull
     @Override
-    public Collection<OBJECT> getAllObjects(@NotNull DBRProgressMonitor monitor, @Nullable OWNER owner)
+    public List<OBJECT> getAllObjects(@NotNull DBRProgressMonitor monitor, @Nullable OWNER owner)
         throws DBException
     {
         if (!isFullyCached()) {
@@ -114,7 +113,7 @@ public abstract class JDBCObjectCache<OWNER extends DBSObject, OBJECT extends DB
                                 }
 
                                 OBJECT object = fetchObject(session, owner, dbResult);
-                                if (object == null) {
+                                if (object == null || !isValidObject(monitor, owner, object)) {
                                     continue;
                                 }
                                 tmpObjectList.add(object);
@@ -133,6 +132,8 @@ public abstract class JDBCObjectCache<OWNER extends DBSObject, OBJECT extends DB
                 }
             } catch (SQLException ex) {
                 throw new DBException(ex, dataSource);
+            } catch (DBException ex) {
+                throw ex;
             } catch (Exception ex) {
                 throw new DBException("Internal driver error", ex);
             }

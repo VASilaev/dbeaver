@@ -17,6 +17,7 @@
 package org.jkiss.dbeaver.ext.mssql.ui;
 
 import org.eclipse.jface.dialogs.IDialogPage;
+import org.eclipse.jface.resource.ImageDescriptor;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.events.SelectionAdapter;
 import org.eclipse.swt.events.SelectionEvent;
@@ -41,6 +42,10 @@ import java.util.List;
 public class SQLServerConnectionPage extends ConnectionPageAbstract implements ICompositeDialogPage
 {
 
+    private static final ImageDescriptor LOG_AZURE = SQLServerUIActivator.getImageDescriptor("icons/azure_logo.png");
+    private static final ImageDescriptor LOGO_SQLSERVER = SQLServerUIActivator.getImageDescriptor("icons/mssql_logo.png");
+    private static final ImageDescriptor LOGO_SYBASE = SQLServerUIActivator.getImageDescriptor("icons/sybase_logo.png");
+
     private Text hostText;
     private Text portText;
     private Text dbText;
@@ -52,7 +57,6 @@ public class SQLServerConnectionPage extends ConnectionPageAbstract implements I
     private Combo authCombo;
 //    private Button windowsAuthenticationButton;
 //    private Button adpAuthenticationButton;
-    private Button trustServerCertificate;
     private Button showAllSchemas;
 
     private boolean activated;
@@ -97,7 +101,7 @@ public class SQLServerConnectionPage extends ConnectionPageAbstract implements I
 
                 portText = new Text(settingsGroup, SWT.BORDER);
                 gd = new GridData(GridData.CENTER);
-                gd.widthHint = 60;
+                gd.widthHint = UIUtils.getFontHeight(portText) * 7;
                 portText.setLayoutData(gd);
             }
         }
@@ -189,7 +193,6 @@ public class SQLServerConnectionPage extends ConnectionPageAbstract implements I
             secureGroup.setLayout(new GridLayout(1, false));
 
             createPasswordControls(secureGroup);
-            trustServerCertificate = UIUtils.createCheckbox(secureGroup, SQLServerUIMessages.dialog_setting_trust_server_certificate, SQLServerUIMessages.dialog_setting_trust_server_certificate_tip, true, 2);
             showAllSchemas = UIUtils.createCheckbox(secureGroup, SQLServerUIMessages.dialog_setting_show_all_schemas, SQLServerUIMessages.dialog_setting_show_all_schemas_tip, true, 2);
         }
 
@@ -214,9 +217,9 @@ public class SQLServerConnectionPage extends ConnectionPageAbstract implements I
         {
             setImageDescriptor(isSqlServer ?
                 (isDriverAzure ?
-                    SQLServerUIActivator.getImageDescriptor("icons/azure_logo.png") :
-                    SQLServerUIActivator.getImageDescriptor("icons/mssql_logo.png")) :
-                SQLServerUIActivator.getImageDescriptor("icons/sybase_logo.png"));
+                    LOG_AZURE :
+                    LOGO_SQLSERVER) :
+                LOGO_SYBASE);
         }
 
         // Load values from new connection info
@@ -239,15 +242,17 @@ public class SQLServerConnectionPage extends ConnectionPageAbstract implements I
         }
         if (dbText != null) {
             String databaseName = connectionInfo.getDatabaseName();
-            if (CommonUtils.isEmpty(databaseName)) {
-                databaseName = getSite().isNew() ?
-                    (isDriverAzure ? SQLServerConstants.DEFAULT_DATABASE_AZURE : SQLServerConstants.DEFAULT_DATABASE) :
-                    "";
+            if (getSite().isNew() && CommonUtils.isEmpty(databaseName)) {
+                databaseName = CommonUtils.notEmpty(site.getDriver().getDefaultDatabase());
             }
-            dbText.setText(databaseName);
+            dbText.setText(CommonUtils.notEmpty(databaseName));
         }
         if (userNameText != null) {
-            userNameText.setText(CommonUtils.notEmpty(connectionInfo.getUserName()));
+            if (site.isNew() && CommonUtils.isEmpty(connectionInfo.getUserName())) {
+                userNameText.setText(CommonUtils.notEmpty(site.getDriver().getDefaultUser()));
+            } else {
+                userNameText.setText(CommonUtils.notEmpty(connectionInfo.getUserName()));
+            }
         }
         if (passwordText != null) {
             passwordText.setText(CommonUtils.notEmpty(connectionInfo.getUserPassword()));
@@ -265,7 +270,6 @@ public class SQLServerConnectionPage extends ConnectionPageAbstract implements I
             adpAuthenticationButton.setSelection(SQLServerUtils.isActiveDirectoryAuth(connectionInfo));
         }
 */
-        trustServerCertificate.setSelection(CommonUtils.getBoolean(connectionInfo.getProperty(SQLServerConstants.PROP_TRUST_SERVER_CERTIFICATE), true));
         showAllSchemas.setSelection(CommonUtils.toBoolean(connectionInfo.getProviderProperty(SQLServerConstants.PROP_SHOW_ALL_SCHEMAS)));
 
         activated = true;
@@ -330,10 +334,6 @@ public class SQLServerConnectionPage extends ConnectionPageAbstract implements I
             }
         }
 */
-        if (trustServerCertificate != null) {
-            connectionInfo.setProperty(SQLServerConstants.PROP_TRUST_SERVER_CERTIFICATE,
-                String.valueOf(trustServerCertificate.getSelection()));
-        }
         if (showAllSchemas != null) {
             connectionInfo.setProviderProperty(SQLServerConstants.PROP_SHOW_ALL_SCHEMAS,
                 String.valueOf(showAllSchemas.getSelection()));

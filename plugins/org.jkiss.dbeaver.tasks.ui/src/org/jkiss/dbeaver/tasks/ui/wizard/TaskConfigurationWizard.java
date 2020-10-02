@@ -37,10 +37,7 @@ import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.model.app.DBPProject;
 import org.jkiss.dbeaver.model.exec.DBCExecutionContext;
 import org.jkiss.dbeaver.model.runtime.DBRRunnableContext;
-import org.jkiss.dbeaver.model.task.DBTTask;
-import org.jkiss.dbeaver.model.task.DBTTaskContext;
-import org.jkiss.dbeaver.model.task.DBTTaskType;
-import org.jkiss.dbeaver.model.task.DBTaskUtils;
+import org.jkiss.dbeaver.model.task.*;
 import org.jkiss.dbeaver.registry.task.TaskRegistry;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.tasks.ui.internal.TaskUIMessages;
@@ -50,12 +47,11 @@ import org.jkiss.dbeaver.ui.UIUtils;
 import org.jkiss.dbeaver.ui.dialogs.BaseWizard;
 import org.jkiss.dbeaver.ui.navigator.NavigatorUtils;
 
-import java.io.PrintWriter;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-public abstract class TaskConfigurationWizard extends BaseWizard implements IWorkbenchWizard {
+public abstract class TaskConfigurationWizard<SETTINGS extends DBTTaskSettings> extends BaseWizard implements IWorkbenchWizard {
 
     private static final Log log = Log.getLog(TaskConfigurationWizard.class);
 
@@ -73,10 +69,16 @@ public abstract class TaskConfigurationWizard extends BaseWizard implements IWor
         this.currentTask = task;
     }
 
+    protected abstract SETTINGS getSettings();
+
     protected abstract String getDefaultWindowTitle();
 
     public boolean isTaskEditor() {
         return currentTask != null;
+    }
+
+    public boolean isNewTaskEditor() {
+        return currentTask != null && getProject().getTaskManager().getTaskById(currentTask.getId()) == null;
     }
 
     public abstract String getTaskTypeId();
@@ -84,7 +86,7 @@ public abstract class TaskConfigurationWizard extends BaseWizard implements IWor
     public abstract void saveTaskState(DBRRunnableContext runnableContext, DBTTask task, Map<String, Object> state);
 
     public boolean isRunTaskOnFinish() {
-        return getCurrentTask() != null && !getContainer().isSelectorMode();
+        return getCurrentTask() != null && !getCurrentTask().isTemporary() && !getContainer().isSelectorMode();
     }
 
     public IStructuredSelection getCurrentSelection() {
@@ -197,7 +199,7 @@ public abstract class TaskConfigurationWizard extends BaseWizard implements IWor
 
     @Override
     public boolean performFinish() {
-        if (currentTask != null) {
+        if (currentTask != null && !currentTask.isTemporary()) {
             saveTask();
         }
 
@@ -219,7 +221,7 @@ public abstract class TaskConfigurationWizard extends BaseWizard implements IWor
             }
             // Run task thru task manager
             // Pass executor to visualize task progress in UI
-            TaskWizardExecutor executor = new TaskWizardExecutor(getRunnableContext(), task, log, new PrintWriter(System.out));
+            TaskWizardExecutor executor = new TaskWizardExecutor(getRunnableContext(), task, log, System.out);
             if (getCurrentTask() == null) {
                 // Execute directly in wizard
                 executor.executeTask();
@@ -239,7 +241,7 @@ public abstract class TaskConfigurationWizard extends BaseWizard implements IWor
 
     private void saveTask() {
         DBTTask currentTask = getCurrentTask();
-        if (currentTask == null) {
+        if (currentTask == null || currentTask.isTemporary()) {
             // Create new task
             DBTTaskType taskType = getTaskType();
             if (taskType == null) {
@@ -302,7 +304,7 @@ public abstract class TaskConfigurationWizard extends BaseWizard implements IWor
             panel.setLayout(new GridLayout(horizontal ? (supportsVariables ? 3 : 2) : 1, false));
 
             if (supportsVariables) {
-                UIUtils.createDialogButton(panel, "Variables ...", new SelectionAdapter() {
+                UIUtils.createDialogButton(panel, TaskUIMessages.task_config_wizard_button_variables + " ...", new SelectionAdapter() {
                     @Override
                     public void widgetSelected(SelectionEvent e) {
                         configureVariables();
@@ -310,13 +312,13 @@ public abstract class TaskConfigurationWizard extends BaseWizard implements IWor
                 });
             }
 
-            saveAsTaskButton = UIUtils.createDialogButton(panel, "Save task", new SelectionAdapter() {
+            saveAsTaskButton = UIUtils.createDialogButton(panel, TaskUIMessages.task_config_wizard_button_save_task, new SelectionAdapter() {
                 @Override
                 public void widgetSelected(SelectionEvent e) {
                     saveTask();
                 }
             });
-            Link tasksLink = UIUtils.createLink(panel, "<a>Open Tasks view</a>", new SelectionAdapter() {
+            Link tasksLink = UIUtils.createLink(panel, "<a>" + TaskUIMessages.task_config_wizard_link_open_tasks_view + "</a>", new SelectionAdapter() {
                 @Override
                 public void widgetSelected(SelectionEvent e) {
                     try {

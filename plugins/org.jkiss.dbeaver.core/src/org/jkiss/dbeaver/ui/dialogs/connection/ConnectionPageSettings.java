@@ -21,6 +21,7 @@ import org.eclipse.jface.dialogs.IDialogPage;
 import org.eclipse.jface.util.IPropertyChangeListener;
 import org.eclipse.jface.util.PropertyChangeEvent;
 import org.eclipse.jface.wizard.IWizardPage;
+import org.eclipse.osgi.util.NLS;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.events.SelectionAdapter;
 import org.eclipse.swt.events.SelectionEvent;
@@ -55,7 +56,7 @@ import java.util.*;
 /**
  * Settings connection page. Hosts particular drivers' connection pages
  */
-class ConnectionPageSettings extends ActiveWizardPage<ConnectionWizard> implements IDataSourceConnectionEditorSite, ICompositeDialogPage, IDataSourceConnectionTester {
+class ConnectionPageSettings extends ActiveWizardPage<ConnectionWizard> implements IDataSourceConnectionEditorSite, ICompositeDialogPage, ICompositeDialogPageContainer, IDataSourceConnectionTester {
     private static final Log log = Log.getLog(DriverDescriptor.class);
 
     public static final String PAGE_NAME = ConnectionPageSettings.class.getSimpleName();
@@ -108,7 +109,7 @@ class ConnectionPageSettings extends ActiveWizardPage<ConnectionWizard> implemen
             //UIUtils.resizeShell(getWizard().getContainer().getShell());
         }
 
-        //setMessage(NLS.bind(CoreMessages.dialog_connection_message, getDriver().getFullName()));
+        setDescription(NLS.bind(CoreMessages.dialog_connection_message, getDriver().getFullName()));
         DataSourceDescriptor connectionInfo = getActiveDataSource();
         if (!activated.contains(connectionInfo)) {
             if (this.connectionEditor != null) {
@@ -200,12 +201,14 @@ class ConnectionPageSettings extends ActiveWizardPage<ConnectionWizard> implemen
             // init sub pages (if any)
             IDialogPage[] allSubPages = getSubPages(false, true);
 
-            if (!ArrayUtils.isEmpty(allSubPages)) {
+            {
                 // Create tab folder
                 List<IDialogPage> allPages = new ArrayList<>();
                 allPages.add(connectionEditor);
-                // Add sub pages
-                Collections.addAll(allPages, allSubPages);
+                if (!ArrayUtils.isEmpty(allSubPages)) {
+                    // Add sub pages
+                    Collections.addAll(allPages, allSubPages);
+                }
 
                 tabFolder = new TabFolder(parent, SWT.TOP);
                 tabFolder.setLayoutData(new GridData(GridData.FILL_BOTH));
@@ -231,10 +234,6 @@ class ConnectionPageSettings extends ActiveWizardPage<ConnectionWizard> implemen
                         activateCurrentItem();
                     }
                 });
-            } else {
-                // Create single editor control
-                this.connectionEditor.createControl(parent);
-                setControl(this.connectionEditor.getControl());
             }
 
             UIUtils.setHelp(getControl(), IHelpContextIds.CTX_CON_WIZARD_SETTINGS);
@@ -410,5 +409,15 @@ class ConnectionPageSettings extends ActiveWizardPage<ConnectionWizard> implemen
     @Override
     public String toString() {
         return getName();
+    }
+
+    @Override
+    public void showSubPage(IDialogPage subPage) {
+        for (TabItem pageTab : tabFolder.getItems()) {
+            if (pageTab.getData() == subPage) {
+                tabFolder.setSelection(pageTab);
+                break;
+            }
+        }
     }
 }

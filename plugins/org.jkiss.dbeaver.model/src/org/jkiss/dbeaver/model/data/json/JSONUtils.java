@@ -22,7 +22,6 @@ import com.google.gson.stream.JsonWriter;
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.Log;
-import org.jkiss.dbeaver.model.DBConstants;
 import org.jkiss.dbeaver.model.exec.DBCException;
 import org.jkiss.dbeaver.model.runtime.DBRRunnableContext;
 import org.jkiss.dbeaver.runtime.serialize.DBPObjectSerializer;
@@ -46,7 +45,7 @@ public class JSONUtils {
 
     static {
         TimeZone tz = TimeZone.getTimeZone("UTC");
-        dateFormat = new SimpleDateFormat(DBConstants.DEFAULT_ISO_TIMESTAMP_FORMAT);
+        dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'");
         dateFormat.setTimeZone(tz);
     }
 
@@ -67,7 +66,7 @@ public class JSONUtils {
     }
 
     public static String formatISODate(Date date) {
-        return "ISODate(\"" + formatDate(date) + "\")";  //$NON-NLS-1$//$NON-NLS-2$
+        return "ISODate('" + formatDate(date) + "')";  //$NON-NLS-1$//$NON-NLS-2$
     }
 
     public static String escapeJsonString(String str) {
@@ -301,8 +300,20 @@ public class JSONUtils {
         return CommonUtils.toBoolean(map.get(name));
     }
 
+    public static boolean getBoolean(Map<String, Object> map, String name, boolean defaultValue) {
+        return CommonUtils.getBoolean(map.get(name), defaultValue);
+    }
+
     public static int getInteger(Map<String, Object> map, String name) {
         return CommonUtils.toInt(map.get(name));
+    }
+
+    public static int getInteger(Map<String, Object> map, String name, int defaultValue) {
+        return CommonUtils.toInt(map.get(name), defaultValue);
+    }
+
+    public static long getLong(Map<String, Object> map, String name, long defaultValue) {
+        return CommonUtils.toLong(map.get(name), defaultValue);
     }
 
     @NotNull
@@ -310,6 +321,15 @@ public class JSONUtils {
         Object value = map.get(name);
         if (value instanceof List) {
             return  (List<Map<String, Object>>) value;
+        }
+        return Collections.emptyList();
+    }
+
+    @NotNull
+    public static List<String> getStringList(@NotNull Map<String, Object> map, @NotNull String name) {
+        Object value = map.get(name);
+        if (value instanceof List) {
+            return  (List<String>) value;
         }
         return Collections.emptyList();
     }

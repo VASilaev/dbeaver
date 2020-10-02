@@ -123,6 +123,10 @@ public abstract class GenericTableBase extends JDBCTable<GenericDataSource, Gene
         return this.isSystem;
     }
 
+    public void setSystem(boolean system) {
+        isSystem = system;
+    }
+
     @Property(viewable = true, order = 2)
     public String getTableType()
     {
@@ -180,7 +184,7 @@ public abstract class GenericTableBase extends JDBCTable<GenericDataSource, Gene
         return null;
     }
 
-    void addUniqueKey(GenericUniqueKey constraint) {
+    public void addUniqueKey(GenericUniqueKey constraint) {
         getContainer().getConstraintKeysCache().cacheObject(constraint);
     }
 
@@ -234,7 +238,7 @@ public abstract class GenericTableBase extends JDBCTable<GenericDataSource, Gene
 
     // Comment row count calculation - it works too long and takes a lot of resources without serious reason
     @Nullable
-    @Property(viewable = false, expensive = true, order = 5, category = "Statistics")
+    @Property(viewable = false, expensive = true, order = 5, category = CAT_STATISTICS)
     public synchronized Long getRowCount(DBRProgressMonitor monitor)
     {
         if (rowCount != null) {
@@ -450,8 +454,9 @@ public abstract class GenericTableBase extends JDBCTable<GenericDataSource, Gene
         }
     }
 
+    @Nullable
     @Association
-    public Collection<? extends GenericTrigger> getTriggers(DBRProgressMonitor monitor) throws DBException {
+    public List<? extends GenericTrigger> getTriggers(@NotNull DBRProgressMonitor monitor) throws DBException {
         if (triggers == null) {
             loadTriggers(monitor);
         }

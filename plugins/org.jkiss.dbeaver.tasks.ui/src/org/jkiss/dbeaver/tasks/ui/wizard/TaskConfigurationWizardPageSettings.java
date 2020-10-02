@@ -16,7 +16,9 @@
  */
 package org.jkiss.dbeaver.tasks.ui.wizard;
 
+import org.eclipse.osgi.util.NLS;
 import org.eclipse.swt.SWT;
+
 import org.eclipse.swt.layout.FillLayout;
 import org.eclipse.swt.widgets.Composite;
 import org.jkiss.dbeaver.Log;
@@ -25,6 +27,7 @@ import org.jkiss.dbeaver.model.task.DBTTaskType;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.tasks.ui.DBTTaskConfigPanel;
 import org.jkiss.dbeaver.tasks.ui.DBTTaskConfigurator;
+import org.jkiss.dbeaver.tasks.ui.internal.TaskUIMessages;
 import org.jkiss.dbeaver.tasks.ui.registry.TaskUIRegistry;
 import org.jkiss.dbeaver.ui.UIUtils;
 import org.jkiss.dbeaver.ui.dialogs.ActiveWizardPage;
@@ -40,7 +43,7 @@ class TaskConfigurationWizardPageSettings extends ActiveWizardPage<TaskConfigura
     private DBTTaskConfigPanel taskConfigPanel;
 
     TaskConfigurationWizardPageSettings(DBTTask task) {
-        super(task == null ? "Create new task" : "Edit task");
+        super(task == null ? TaskUIMessages.task_config_wizard_page_settings_create_task : TaskUIMessages.task_config_wizard_page_settings_edit_task);
 
         setPageComplete(true);
     }
@@ -60,7 +63,7 @@ class TaskConfigurationWizardPageSettings extends ActiveWizardPage<TaskConfigura
             if (errorMessage != null) {
                 setErrorMessage(errorMessage);
             } else {
-                setErrorMessage("Fill task '" + curTaskType.getName() + "' parameters");
+                setErrorMessage(NLS.bind(TaskUIMessages.task_configuration_wizard_page_settings_fill_parameters, curTaskType.getName()));
             }
             return false;
         }
@@ -82,15 +85,15 @@ class TaskConfigurationWizardPageSettings extends ActiveWizardPage<TaskConfigura
         createTaskSettingsUI();
 
         if (curTaskType == null) {
-            setTitle("Edit task properties");
-            setDescription("Set task name, type and input data");
+            setTitle(TaskUIMessages.task_config_wizard_page_settings_title_task_prop);
+            setDescription(TaskUIMessages.task_config_wizard_page_settings_descr_set_task);
         } else {
             String title = curTaskType.getName();
             if (getWizard().getCurrentTask() != null) {
                 title += " (" + getWizard().getCurrentTask().getName() + ")";
             }
             setTitle(title);
-            setDescription("Configure " + curTaskType.getName() + " settings");
+            setDescription(NLS.bind(TaskUIMessages.task_config_wizard_page_settings_config,curTaskType.getName()));
         }
         setPageComplete(determinePageCompletion());
     }

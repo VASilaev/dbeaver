@@ -98,27 +98,6 @@ public class SQLServerGenericDataSource extends GenericDataSource {
     //////////////////////////////////////////////////////////
     // Databases
 
-    //////////////////////////////////////////////////////////
-    // Windows authentication
-
-    @Override
-    protected String getConnectionUserName(@NotNull DBPConnectionConfiguration connectionInfo) {
-        if (SQLServerUtils.isWindowsAuth(connectionInfo)) {
-            return "";
-        } else {
-            return super.getConnectionUserName(connectionInfo);
-        }
-    }
-
-    @Override
-    protected String getConnectionUserPassword(@NotNull DBPConnectionConfiguration connectionInfo) {
-        if (SQLServerUtils.isWindowsAuth(connectionInfo)) {
-            return "";
-        } else {
-            return super.getConnectionUserPassword(connectionInfo);
-        }
-    }
-
     @Override
     protected boolean isPopulateClientAppName() {
         return false;

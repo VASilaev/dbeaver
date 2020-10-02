@@ -6,7 +6,9 @@ import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.model.DBPDataSourceContainer;
 import org.jkiss.dbeaver.model.DBUtils;
+import org.jkiss.dbeaver.model.connection.DBPDriver;
 import org.jkiss.dbeaver.model.connection.DBPNativeClientLocation;
+import org.jkiss.dbeaver.model.connection.DBPNativeClientLocationManager;
 import org.jkiss.dbeaver.model.exec.DBCException;
 import org.jkiss.dbeaver.model.navigator.DBNDatabaseNode;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
@@ -33,7 +35,7 @@ public abstract class AbstractNativeToolHandler<SETTINGS extends AbstractNativeT
         @NotNull DBTTask task,
         @NotNull Locale locale,
         @NotNull Log log,
-        @NotNull Writer logStream,
+        @NotNull PrintStream logStream,
         @NotNull DBTTaskExecutionListener listener) throws DBException {
         SETTINGS settings = createTaskSettings(runnableContext, task);
         settings.setLogWriter(logStream);
@@ -83,10 +85,15 @@ public abstract class AbstractNativeToolHandler<SETTINGS extends AbstractNativeT
         DBPDataSourceContainer dataSourceContainer = settings.getDataSourceContainer();
         if (isNativeClientHomeRequired()) {
             String clientHomeId = dataSourceContainer.getConnectionConfiguration().getClientHomeId();
-            List<DBPNativeClientLocation> nativeClientLocations = dataSourceContainer.getDriver().getNativeClientLocations();
+            final DBPDriver driver = dataSourceContainer.getDriver();
+            final List<DBPNativeClientLocation> clientLocations = driver.getNativeClientLocations();
+            final DBPNativeClientLocationManager locationManager = driver.getNativeClientManager();
+            if (locationManager != null) {
+                clientLocations.addAll(locationManager.findLocalClientLocations());
+            }
             if (clientHomeId == null) {
-                if (!nativeClientLocations.isEmpty()) {
-                    settings.setClientHome(nativeClientLocations.get(0));
+                if (!clientLocations.isEmpty()) {
+                    settings.setClientHome(clientLocations.get(0));
                 } else {
                     settings.setClientHome(null);
                 }
@@ -94,7 +101,7 @@ public abstract class AbstractNativeToolHandler<SETTINGS extends AbstractNativeT
                     throw new DBCException("Client binaries location is not specified");
                 }
             } else {
-                DBPNativeClientLocation clientHome = DBUtils.findObject(nativeClientLocations, clientHomeId);
+                DBPNativeClientLocation clientHome = DBUtils.findObject(clientLocations, clientHomeId);
                 if (clientHome == null) {
                     clientHome = settings.findNativeClientHome(clientHomeId);
                 }
@@ -178,9 +185,7 @@ public abstract class AbstractNativeToolHandler<SETTINGS extends AbstractNativeT
                 }
                 try {
                     final int exitCode = process.exitValue();
-                    if (exitCode != 0) {
-                        throw new IOException("Process failed (exit code = " + exitCode + "). See error log.");
-                    }
+                    validateErrorCode(exitCode);
                 } catch (IllegalThreadStateException e) {
                     // Still running
                     continue;
@@ -196,6 +201,12 @@ public abstract class AbstractNativeToolHandler<SETTINGS extends AbstractNativeT
         }
 
         return true;
+    }
+
+    public void validateErrorCode(int exitCode) throws IOException {
+        if (exitCode != 0) {
+            throw new IOException("Process failed (exit code = " + exitCode + "). See error log.");
+        }
     }
 
     protected void notifyToolFinish(String toolName, long workTime) {
@@ -432,7 +443,7 @@ public abstract class AbstractNativeToolHandler<SETTINGS extends AbstractNativeT
     private class LogReaderJob extends Thread {
         private DBTTask task;
         private SETTINGS settings;
-        private Writer logWriter;
+        private PrintStream logWriter;
         private ProcessBuilder processBuilder;
         private InputStream input;
 
@@ -462,9 +473,9 @@ public abstract class AbstractNativeToolHandler<SETTINGS extends AbstractNativeT
             cmdString.append(lf);
 
             try {
-                logWriter.write(cmdString.toString());
+                logWriter.print(cmdString.toString());
 
-                logWriter.write("Task '" + task.getName() + "' started at " + new Date() + lf);
+                logWriter.print("Task '" + task.getName() + "' started at " + new Date() + lf);
                 logWriter.flush();
 
                 InputStream in = input;
@@ -477,7 +488,7 @@ public abstract class AbstractNativeToolHandler<SETTINGS extends AbstractNativeT
                         }
                         buf.append((char) b);
                         if (b == '\n') {
-                            logWriter.write(buf.toString());
+                            logWriter.println(buf.toString());
                             logWriter.flush();
                             buf.setLength(0);
                         }
@@ -487,18 +498,10 @@ public abstract class AbstractNativeToolHandler<SETTINGS extends AbstractNativeT
 
             } catch (IOException e) {
                 // just skip
-                try {
-                    logWriter.write(e.getMessage() + lf);
-                } catch (IOException e1) {
-                    // ignore
-                }
+                logWriter.println(e.getMessage() + lf);
             } finally {
-                try {
-                    logWriter.write("Task '" + task.getName() + "' finished at " + new Date() + lf);
-                    logWriter.flush();
-                } catch (IOException e) {
-                    // ignore
-                }
+                logWriter.print("Task '" + task.getName() + "' finished at " + new Date() + lf);
+                logWriter.flush();
             }
         }
     }

@@ -19,6 +19,7 @@ package org.jkiss.dbeaver.ext.postgresql.model;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.ext.postgresql.PostgreUtils;
+import org.jkiss.dbeaver.model.DBUtils;
 import org.jkiss.dbeaver.model.exec.jdbc.JDBCPreparedStatement;
 import org.jkiss.dbeaver.model.exec.jdbc.JDBCResultSet;
 import org.jkiss.dbeaver.model.exec.jdbc.JDBCSession;
@@ -103,7 +104,7 @@ public class PostgreStructureAssistant extends JDBCStructureAssistant<PostgreExe
             nsList.add(0, ownerSchema);
         } else if (!globalSearch) {
             // Limit object search with search path
-            for (String sn : database.getMetaContext().getSearchPath()) {
+            for (String sn : executionContext.getSearchPath()) {
                 final PostgreSchema schema = database.getSchema(
                     session.getProgressMonitor(),
                     PostgreUtils.getRealSchemaName(database, sn));
@@ -195,7 +196,7 @@ public class PostgreStructureAssistant extends JDBCStructureAssistant<PostgreExe
 
         // Load procedures
         try (JDBCPreparedStatement dbStat = session.prepareStatement(
-            "SELECT DISTINCT x.oid,x.proname,x.pronamespace FROM pg_catalog.pg_proc x " +
+            "SELECT x.oid,x.* FROM pg_catalog.pg_proc x " +
                 "WHERE x.proname " + (caseSensitive ? "LIKE" : "ILIKE") + " ? " +
                 "AND x.proname NOT LIKE '\\_%'" + // Exclude procedures starting with underscore
                 (CommonUtils.isEmpty(schema) ? "" : " AND x.pronamespace IN (" + SQLUtils.generateParamList(schema.size())+ ")") +
@@ -218,7 +219,10 @@ public class PostgreStructureAssistant extends JDBCStructureAssistant<PostgreExe
                         log.debug("Procedure's schema '" + schemaId + "' not found");
                         continue;
                     }
-                    objects.add(new AbstractObjectReference(procName, procSchema, null, PostgreProcedure.class, RelationalObjectType.TYPE_PROCEDURE) {
+                    PostgreProcedure proc = new PostgreProcedure(monitor, procSchema, dbResult);
+
+                    objects.add(new AbstractObjectReference(procName, procSchema, null, PostgreProcedure.class, RelationalObjectType.TYPE_PROCEDURE,
+                        DBUtils.getQuotedIdentifier(procSchema) + "." + proc.getOverloadedName()) {
                         @Override
                         public DBSObject resolveObject(DBRProgressMonitor monitor) throws DBException {
                             PostgreProcedure procedure = procSchema.getProcedure(monitor, procId);
@@ -265,7 +269,7 @@ public class PostgreStructureAssistant extends JDBCStructureAssistant<PostgreExe
                     objects.add(new AbstractObjectReference(constrName, constrSchema, null, PostgreTableConstraintBase.class, RelationalObjectType.TYPE_CONSTRAINT) {
                         @Override
                         public DBSObject resolveObject(DBRProgressMonitor monitor) throws DBException {
-                            final PostgreTableConstraintBase constraint = PostgreUtils.getObjectById(monitor, constrSchema.constraintCache, constrSchema, constrId);
+                            final PostgreTableConstraintBase constraint = PostgreUtils.getObjectById(monitor, constrSchema.getConstraintCache(), constrSchema, constrId);
                             if (constraint == null) {
                                 throw new DBException("Constraint '" + constrName + "' not found in schema '" + constrSchema.getName() + "'");
                             }
@@ -310,7 +314,7 @@ public class PostgreStructureAssistant extends JDBCStructureAssistant<PostgreExe
                     objects.add(new AbstractObjectReference(attributeName, constrSchema, null, PostgreTableBase.class, RelationalObjectType.TYPE_TABLE_COLUMN) {
                         @Override
                         public DBSObject resolveObject(DBRProgressMonitor monitor) throws DBException {
-                            final PostgreTableBase table = PostgreUtils.getObjectById(monitor, constrSchema.tableCache, constrSchema, tableId);
+                            final PostgreTableBase table = PostgreUtils.getObjectById(monitor, constrSchema.getTableCache(), constrSchema, tableId);
                             if (table == null) {
                                 throw new DBException("Table '" + tableId + "' not found in schema '" + constrSchema.getName() + "'");
                             }

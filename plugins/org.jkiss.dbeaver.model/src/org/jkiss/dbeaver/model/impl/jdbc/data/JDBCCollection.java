@@ -20,10 +20,7 @@ import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
-import org.jkiss.dbeaver.model.DBConstants;
-import org.jkiss.dbeaver.model.DBPDataKind;
-import org.jkiss.dbeaver.model.DBPDataTypeProvider;
-import org.jkiss.dbeaver.model.DBUtils;
+import org.jkiss.dbeaver.model.*;
 import org.jkiss.dbeaver.model.data.*;
 import org.jkiss.dbeaver.model.exec.*;
 import org.jkiss.dbeaver.model.exec.jdbc.JDBCSession;
@@ -173,7 +170,8 @@ public class JDBCCollection extends AbstractDatabaseList implements DBDValueClon
         final DBSDataType dataType = getComponentType();
         try (DBCSession session = DBUtils.openUtilSession(new VoidProgressMonitor(), dataType, "Create JDBC array")) {
             if (session instanceof Connection) {
-                return ((Connection) session).createArrayOf(dataType.getTypeName(), attrs);
+                String typeName = DBUtils.getObjectFullName(dataType, DBPEvaluationContext.DML);
+                return ((Connection) session).createArrayOf(typeName, attrs);
             } else {
                 return new JDBCArrayImpl(dataType.getTypeName(), dataType.getTypeID(), attrs);
             }
@@ -240,7 +238,7 @@ public class JDBCCollection extends AbstractDatabaseList implements DBDValueClon
                     // Null array of unknown type. Just make NULL read-only array
                     String defDataTypeName = dataSource.getDefaultDataTypeName(DBPDataKind.OBJECT);
                     DBSDataType defDataType = dataSource.getLocalDataType(defDataTypeName);
-                    DBDValueHandler defValueHandler = dataSource.getDefaultValueHandler();
+                    DBDValueHandler defValueHandler = session.getDefaultValueHandler();
                     return new JDBCCollection(defDataType, defValueHandler, null);
                 }
                 try {

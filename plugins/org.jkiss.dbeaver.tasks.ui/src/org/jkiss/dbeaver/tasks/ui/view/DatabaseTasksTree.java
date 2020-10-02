@@ -25,7 +25,6 @@ import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Tree;
 import org.eclipse.swt.widgets.TreeItem;
-import org.eclipse.ui.dialogs.FilteredTree;
 import org.eclipse.ui.dialogs.PatternFilter;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
@@ -37,9 +36,11 @@ import org.jkiss.dbeaver.model.preferences.DBPPreferenceStore;
 import org.jkiss.dbeaver.model.task.*;
 import org.jkiss.dbeaver.registry.task.TaskRegistry;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
+import org.jkiss.dbeaver.tasks.ui.internal.TaskUIMessages;
 import org.jkiss.dbeaver.ui.DBeaverIcons;
 import org.jkiss.dbeaver.ui.UIUtils;
 import org.jkiss.dbeaver.ui.controls.ViewerColumnController;
+import org.jkiss.dbeaver.ui.dialogs.DialogUtils;
 import org.jkiss.dbeaver.utils.RuntimeUtils;
 import org.jkiss.utils.CommonUtils;
 
@@ -62,23 +63,23 @@ public class DatabaseTasksTree {
     private boolean groupByCategory = false;
 
     private final DateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()); //$NON-NLS-1$
-    private final Color colorError;
+    private final Color colorError, colorErrorForeground;
 
     public DatabaseTasksTree(Composite composite, boolean selector) {
         ColorRegistry colorRegistry = UIUtils.getActiveWorkbenchWindow().getWorkbench().getThemeManager().getCurrentTheme().getColorRegistry();
         colorError = colorRegistry.get("org.jkiss.dbeaver.txn.color.reverted.background");
+        colorErrorForeground = UIUtils.getContrastColor(colorError);
+        composite.addDisposeListener(e -> colorErrorForeground.dispose());
 
-        FilteredTree filteredTree = new FilteredTree(composite,
+        taskViewer = DialogUtils.createFilteredTree(composite,
             SWT.MULTI | SWT.FULL_SELECTION | (selector ? SWT.BORDER | SWT.CHECK : SWT.NONE),
-            new NamedObjectPatternFilter(), true);
-        filteredTree.setInitialText("Tasks: type a part of task name here");
-        taskViewer = filteredTree.getViewer();
+            new NamedObjectPatternFilter(), TaskUIMessages.db_tasks_tree_text_tasks_type);
         Tree taskTree = taskViewer.getTree();
         taskTree.setHeaderVisible(true);
         taskTree.setLayoutData(new GridData(GridData.FILL_BOTH));
 
-        taskColumnController = new ViewerColumnController("tasks", filteredTree.getViewer());
-        taskColumnController.addColumn("Name", "Task name", SWT.LEFT, true, true, new TaskLabelProvider() {
+        taskColumnController = new ViewerColumnController(TaskUIMessages.db_tasks_tree_column_controller_tasks, taskViewer);
+        taskColumnController.addColumn(TaskUIMessages.db_tasks_tree_column_controller_add_name, TaskUIMessages.db_tasks_tree_column_controller_add_descr_name, SWT.LEFT, true, true, new TaskLabelProvider() {
             @Override
             protected String getCellText(Object element) {
                 if (element instanceof DBPProject) {
@@ -116,7 +117,7 @@ public class DatabaseTasksTree {
                 return null;
             }
         });
-        taskColumnController.addColumn("Created", "Task create time", SWT.LEFT, false, false, new TaskLabelProvider() {
+        taskColumnController.addColumn(TaskUIMessages.db_tasks_tree_column_controller_add_name_created, TaskUIMessages.db_tasks_tree_column_controller_add_descr_create_time, SWT.LEFT, false, false, new TaskLabelProvider() {
             @Override
             protected String getCellText(Object element) {
                 if (element instanceof DBTTask) {
@@ -126,7 +127,7 @@ public class DatabaseTasksTree {
                 }
             }
         });
-        taskColumnController.addColumn("Last Run", "Task last start time", SWT.LEFT, true, false, new TaskLabelProvider() {
+        taskColumnController.addColumn(TaskUIMessages.db_tasks_tree_column_controller_add_name_last_run, TaskUIMessages.db_tasks_tree_column_controller_add_descr_start_time, SWT.LEFT, true, false, new TaskLabelProvider() {
             @Override
             protected String getCellText(Object element) {
                 if (element instanceof DBTTask) {
@@ -140,7 +141,7 @@ public class DatabaseTasksTree {
                 return null;
             }
         });
-        taskColumnController.addColumn("Last Duration", "Task last run duration", SWT.LEFT, false, false, new TaskLabelProvider() {
+        taskColumnController.addColumn(TaskUIMessages.db_tasks_tree_column_controller_add_name_last_duration, TaskUIMessages.db_tasks_tree_column_controller_add_descr_run_duration, SWT.LEFT, false, false, new TaskLabelProvider() {
             @Override
             protected String getCellText(Object element) {
                 if (element instanceof DBTTask) {
@@ -154,7 +155,7 @@ public class DatabaseTasksTree {
                 return null;
             }
         });
-        taskColumnController.addColumn("Last Result", "Task last result", SWT.LEFT, true, false, new TaskLabelProvider() {
+        taskColumnController.addColumn(TaskUIMessages.db_tasks_tree_column_controller_add_name_last_result, TaskUIMessages.db_tasks_tree_column_controller_add_descr_last_result, SWT.LEFT, true, false, new TaskLabelProvider() {
             @Override
             protected String getCellText(Object element) {
                 if (element instanceof DBTTask) {
@@ -163,7 +164,7 @@ public class DatabaseTasksTree {
                         return "N/A";
                     } else {
                         if (lastRun.isRunSuccess()) {
-                            return "Success";
+                            return TaskUIMessages.db_tasks_tree_column_cell_text_success;
                         } else {
                             return CommonUtils.notEmpty(lastRun.getErrorMessage());
                         }
@@ -174,7 +175,7 @@ public class DatabaseTasksTree {
         });
         DBTScheduler scheduler = TaskRegistry.getInstance().getActiveSchedulerInstance();
         if (scheduler != null) {
-            taskColumnController.addColumn("Next Run", "Task next scheduled run", SWT.LEFT, true, false, new TaskLabelProvider() {
+            taskColumnController.addColumn(TaskUIMessages.db_tasks_tree_column_controller_add_name_next_run, TaskUIMessages.db_tasks_tree_column_controller_add_descr_next_run, SWT.LEFT, true, false, new TaskLabelProvider() {
                 @Override
                 protected String getCellText(Object element) {
                     if (element instanceof DBTTask) {
@@ -189,7 +190,7 @@ public class DatabaseTasksTree {
                 }
             });
         }
-        taskColumnController.addColumn("Description", "Task description", SWT.LEFT, false, false, new TaskLabelProvider() {
+        taskColumnController.addColumn(TaskUIMessages.db_tasks_tree_column_controller_add_name_description, TaskUIMessages.db_tasks_tree_column_controller_add_descr_task_description, SWT.LEFT, false, false, new TaskLabelProvider() {
             @Override
             protected String getCellText(Object element) {
                 if (element instanceof DBTTask) {
@@ -198,7 +199,7 @@ public class DatabaseTasksTree {
                 return null;
             }
         });
-        taskColumnController.addColumn("Type", "Task type", SWT.LEFT, true, false, new TaskLabelProvider() {
+        taskColumnController.addColumn(TaskUIMessages.db_tasks_tree_column_controller_add_name_type, TaskUIMessages.db_tasks_tree_column_controller_add_descr_task_type, SWT.LEFT, true, false, new TaskLabelProvider() {
             @Override
             protected String getCellText(Object element) {
                 if (element instanceof DBTTask) {
@@ -207,7 +208,7 @@ public class DatabaseTasksTree {
                 return null;
             }
         });
-        taskColumnController.addColumn("Category", "Task category", SWT.LEFT, false, false, new TaskLabelProvider() {
+        taskColumnController.addColumn(TaskUIMessages.db_tasks_tree_column_controller_add_name_category, TaskUIMessages.db_tasks_tree_column_controller_add_descr_category, SWT.LEFT, false, false, new TaskLabelProvider() {
             @Override
             protected String getCellText(Object element) {
                 if (element instanceof DBTTask) {
@@ -216,7 +217,7 @@ public class DatabaseTasksTree {
                 return null;
             }
         });
-        taskColumnController.addColumn("Project", "Task container project", SWT.LEFT, true, false, new TaskLabelProvider() {
+        taskColumnController.addColumn(TaskUIMessages.db_tasks_tree_column_controller_add_name_project, TaskUIMessages.db_tasks_tree_column_controller_add_descr_project, SWT.LEFT, true, false, new TaskLabelProvider() {
             @Override
             protected String getCellText(Object element) {
                 if (element instanceof DBTTask) {
@@ -305,8 +306,8 @@ public class DatabaseTasksTree {
 
     public void refresh() {
         refreshTasks();
-        regroupTasks();
-        taskViewer.refresh(true);
+        regroupTasks(false);
+        //taskViewer.refresh(true);
         if (refreshScheduledTasks()) {
             taskViewer.refresh(true);
         }
@@ -316,10 +317,10 @@ public class DatabaseTasksTree {
         refreshTasks();
         refreshScheduledTasks();
 
-        regroupTasks();
+        regroupTasks(true);
     }
 
-    public void regroupTasks() {
+    public void regroupTasks(boolean expandAll) {
         taskViewer.getTree().setRedraw(false);
         try {
             List<Object> rootObjects = new ArrayList<>();
@@ -338,7 +339,9 @@ public class DatabaseTasksTree {
             }
 
             taskViewer.setInput(rootObjects);
-            taskViewer.expandAll();
+            if (expandAll) {
+                taskViewer.expandAll();
+            }
             taskColumnController.repackColumns();
         } finally {
             taskViewer.getTree().setRedraw(true);
@@ -355,9 +358,10 @@ public class DatabaseTasksTree {
         Set<DBTTaskCategory> categories = new LinkedHashSet<>();
         tasks.forEach(task -> {
             if (project == null || project == task.getProject()) {
-                DBTTaskCategory category = task.getType().getCategory();
-                if (parentCategory == category.getParent()) {
-                    categories.add(category);
+                for (DBTTaskCategory category = task.getType().getCategory(); category != null; category = category.getParent()) {
+                    if (parentCategory == category.getParent()) {
+                        categories.add(category);
+                    }
                 }
             }
         });
@@ -626,8 +630,10 @@ public class DatabaseTasksTree {
                 DBTTaskRun lastRun = ((DBTTask) element).getLastRun();
                 if (lastRun != null && !lastRun.isRunSuccess()) {
                     cell.setBackground(colorError);
+                    cell.setForeground(colorErrorForeground);
                 } else {
                     cell.setBackground(null);
+                    cell.setForeground(null);
                 }
             }
             cell.setText(CommonUtils.notEmpty(getCellText(element)));

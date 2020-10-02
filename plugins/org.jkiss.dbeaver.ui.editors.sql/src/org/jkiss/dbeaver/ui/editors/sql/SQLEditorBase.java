@@ -21,6 +21,7 @@ import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.jface.action.*;
 import org.eclipse.jface.preference.IPreferenceStore;
+import org.eclipse.jface.preference.PreferenceConverter;
 import org.eclipse.jface.text.*;
 import org.eclipse.jface.text.rules.FastPartitioner;
 import org.eclipse.jface.text.source.*;
@@ -31,12 +32,13 @@ import org.eclipse.jface.util.IPropertyChangeListener;
 import org.eclipse.jface.util.PropertyChangeEvent;
 import org.eclipse.jface.viewers.ISelection;
 import org.eclipse.jface.viewers.ISelectionProvider;
+import org.eclipse.jface.viewers.StructuredSelection;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Shell;
 import org.eclipse.ui.IEditorInput;
 import org.eclipse.ui.PlatformUI;
-import org.eclipse.ui.dialogs.PreferencesUtil;
 import org.eclipse.ui.editors.text.EditorsUI;
+import org.eclipse.ui.internal.dialogs.PropertyDialog;
 import org.eclipse.ui.texteditor.*;
 import org.eclipse.ui.texteditor.templates.ITemplatesPage;
 import org.eclipse.ui.themes.IThemeManager;
@@ -46,6 +48,7 @@ import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.model.*;
 import org.jkiss.dbeaver.model.exec.DBCExecutionContext;
 import org.jkiss.dbeaver.model.impl.sql.BasicSQLDialect;
+import org.jkiss.dbeaver.model.preferences.DBPPreferenceListener;
 import org.jkiss.dbeaver.model.preferences.DBPPreferenceStore;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.sql.*;
@@ -77,7 +80,7 @@ import java.util.ResourceBundle;
 /**
  * SQL Executor
  */
-public abstract class SQLEditorBase extends BaseTextEditor implements DBPContextProvider, IErrorVisualizer {
+public abstract class SQLEditorBase extends BaseTextEditor implements DBPContextProvider, IErrorVisualizer, DBPPreferenceListener {
 
     static protected final Log log = Log.getLog(SQLEditorBase.class);
     private static final long MAX_FILE_LENGTH_FOR_RULES = 2000000;
@@ -90,7 +93,13 @@ public abstract class SQLEditorBase extends BaseTextEditor implements DBPContext
         {
             IPreferenceStore editorStore = EditorsUI.getPreferenceStore();
             editorStore.setDefault(SQLPreferenceConstants.MATCHING_BRACKETS, true);
+            editorStore.setDefault(SQLPreferenceConstants.MATCHING_BRACKETS_HIGHLIGHT, true);
             //editorStore.setDefault(SQLPreferenceConstants.MATCHING_BRACKETS_COLOR, "128,128,128"); //$NON-NLS-1$
+
+            // Enable "delete spaces as tabs" option by default
+            // We use hardcoded constants instead of AbstractDecoratedTextEditorPreferenceConstants.EDITOR_DELETE_SPACES_AS_TABS
+            // to allow compile on older Eclipse versions
+            editorStore.setDefault("removeSpacesAsTabs", true);
         }
     }
 
@@ -114,6 +123,7 @@ public abstract class SQLEditorBase extends BaseTextEditor implements DBPContext
     private ICharacterPairMatcher characterPairMatcher;
     private SQLEditorCompletionContext completionContext;
     private SQLOccurrencesHighlighter occurrencesHighlighter;
+    private SQLSymbolInserter sqlSymbolInserter;
 
     public SQLEditorBase() {
         super();
@@ -277,20 +287,13 @@ public abstract class SQLEditorBase extends BaseTextEditor implements DBPContext
 
         // Symbol inserter
         {
-            SQLSymbolInserter symbolInserter = new SQLSymbolInserter(this);
+            sqlSymbolInserter = new SQLSymbolInserter(this);
 
-            DBPPreferenceStore preferenceStore = getActivePreferenceStore();
-            boolean closeSingleQuotes = preferenceStore.getBoolean(SQLPreferenceConstants.SQLEDITOR_CLOSE_SINGLE_QUOTES);
-            boolean closeDoubleQuotes = preferenceStore.getBoolean(SQLPreferenceConstants.SQLEDITOR_CLOSE_DOUBLE_QUOTES);
-            boolean closeBrackets = preferenceStore.getBoolean(SQLPreferenceConstants.SQLEDITOR_CLOSE_BRACKETS);
-
-            symbolInserter.setCloseSingleQuotesEnabled(closeSingleQuotes);
-            symbolInserter.setCloseDoubleQuotesEnabled(closeDoubleQuotes);
-            symbolInserter.setCloseBracketsEnabled(closeBrackets);
+            loadActivePreferenceSettings();
 
             ISourceViewer sourceViewer = getSourceViewer();
             if (sourceViewer instanceof ITextViewerExtension) {
-                ((ITextViewerExtension) sourceViewer).prependVerifyKeyListener(symbolInserter);
+                ((ITextViewerExtension) sourceViewer).prependVerifyKeyListener(sqlSymbolInserter);
             }
         }
 
@@ -298,6 +301,17 @@ public abstract class SQLEditorBase extends BaseTextEditor implements DBPContext
             // Context listener
             EditorUtils.trackControlContext(getSite(), getViewer().getTextWidget(), SQLEditorContributions.SQL_EDITOR_CONTROL_CONTEXT);
         }
+    }
+
+    protected void loadActivePreferenceSettings() {
+        DBPPreferenceStore preferenceStore = getActivePreferenceStore();
+        boolean closeSingleQuotes = preferenceStore.getBoolean(SQLPreferenceConstants.SQLEDITOR_CLOSE_SINGLE_QUOTES);
+        boolean closeDoubleQuotes = preferenceStore.getBoolean(SQLPreferenceConstants.SQLEDITOR_CLOSE_DOUBLE_QUOTES);
+        boolean closeBrackets = preferenceStore.getBoolean(SQLPreferenceConstants.SQLEDITOR_CLOSE_BRACKETS);
+
+        sqlSymbolInserter.setCloseSingleQuotesEnabled(closeSingleQuotes);
+        sqlSymbolInserter.setCloseDoubleQuotesEnabled(closeDoubleQuotes);
+        sqlSymbolInserter.setCloseBracketsEnabled(closeBrackets);
     }
 
     public SQLEditorControl getEditorControlWrapper() {
@@ -371,6 +385,12 @@ public abstract class SQLEditorBase extends BaseTextEditor implements DBPContext
 
         getSourceViewerDecorationSupport(sourceViewer);
 
+        SQLMatchingCharacterPainter matchPainter = new SQLMatchingCharacterPainter(sourceViewer, characterPairMatcher);
+        matchPainter.setColor(getSharedColors().getColor(
+            PreferenceConverter.getColor(getPreferenceStore(), "writeOccurrenceIndicationColor")));
+        matchPainter.setHighlightCharacterAtCaretLocation(true);
+        sourceViewer.addPainter(matchPainter);
+
         return sourceViewer;
     }
 
@@ -384,8 +404,16 @@ public abstract class SQLEditorBase extends BaseTextEditor implements DBPContext
             // If we below Eclipse 4.2.1
             characterPairMatcher = new SQLCharacterPairMatcher(this, matchChars, SQLParserPartitions.SQL_PARTITIONING);
         }
+
+/*
         support.setCharacterPairMatcher(characterPairMatcher);
-        support.setMatchingCharacterPainterPreferenceKeys(SQLPreferenceConstants.MATCHING_BRACKETS, SQLPreferenceConstants.MATCHING_BRACKETS_COLOR);
+        support.setMatchingCharacterPainterPreferenceKeys(
+            SQLPreferenceConstants.MATCHING_BRACKETS,
+            SQLPreferenceConstants.MATCHING_BRACKETS_COLOR,
+            SQLPreferenceConstants.MATCHING_BRACKETS_HIGHLIGHT,
+            null);//SQLPreferenceConstants.MATCHING_BRACKETS_HIGHLIGHT);
+*/
+
         super.configureSourceViewerDecorationSupport(support);
     }
 
@@ -811,6 +839,21 @@ public abstract class SQLEditorBase extends BaseTextEditor implements DBPContext
         }
     }
 
+    @Override
+    public void preferenceChange(PreferenceChangeEvent event) {
+        switch (event.getProperty()) {
+            case SQLPreferenceConstants.SQLEDITOR_CLOSE_SINGLE_QUOTES:
+                sqlSymbolInserter.setCloseSingleQuotesEnabled(CommonUtils.toBoolean(event.getNewValue()));
+                return;
+            case SQLPreferenceConstants.SQLEDITOR_CLOSE_DOUBLE_QUOTES:
+                sqlSymbolInserter.setCloseDoubleQuotesEnabled(CommonUtils.toBoolean(event.getNewValue()));
+                return;
+            case SQLPreferenceConstants.SQLEDITOR_CLOSE_BRACKETS:
+                sqlSymbolInserter.setCloseBracketsEnabled(CommonUtils.toBoolean(event.getNewValue()));
+                return;
+        }
+    }
+
     ////////////////////////////////////////////////////////
     // Brackets
 
@@ -822,8 +865,10 @@ public abstract class SQLEditorBase extends BaseTextEditor implements DBPContext
         public void run() {
             Shell shell = getSourceViewer().getTextWidget().getShell();
             String[] preferencePages = collectContextMenuPreferencePages();
-            if (preferencePages.length > 0 && (shell == null || !shell.isDisposed()))
-                PreferencesUtil.createPreferenceDialogOn(shell, preferencePages[0], preferencePages, getEditorInput()).open();
+            if (preferencePages.length > 0 && (shell == null || !shell.isDisposed())) {
+                PropertyDialog.createDialogOn(shell, null, new StructuredSelection(getEditorInput())).open();
+                //PreferencesUtil.createPreferenceDialogOn(shell, preferencePages[0], preferencePages, getEditorInput()).open();
+            }
         }
     }
 

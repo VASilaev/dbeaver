@@ -192,7 +192,7 @@ public class DataSourceProviderRegistry implements DBPDataSourceProviderRegistry
 
         int driverCount = 0, customDriverCount = 0;
         for (DataSourceProviderDescriptor pd : dataSourceProviders) {
-            for (DriverDescriptor dd : pd.getDrivers()) {
+            for (DBPDriver dd : pd.getDrivers()) {
                 if (!dd.isDisabled() && dd.getReplacedBy() == null) {
                     driverCount++;
                     if (dd.isCustom()) customDriverCount++;
@@ -285,10 +285,10 @@ public class DataSourceProviderRegistry implements DBPDataSourceProviderRegistry
         return dataSourceProviders;
     }
 
-    public List<DataSourceProviderDescriptor> getEnabledDataSourceProviders()
+    public List<DBPDataSourceProviderDescriptor> getEnabledDataSourceProviders()
     {
         //IActivityManager activityManager = PlatformUI.getWorkbench().getActivitySupport().getActivityManager();
-        List<DataSourceProviderDescriptor> enabled = new ArrayList<>(dataSourceProviders);
+        List<DBPDataSourceProviderDescriptor> enabled = new ArrayList<>(dataSourceProviders);
 /*
         enabled.removeIf(p ->
             !activityManager.getIdentifier(p.getFullIdentifier()).isEnabled()
@@ -298,26 +298,44 @@ public class DataSourceProviderRegistry implements DBPDataSourceProviderRegistry
     }
 
     @Nullable
-    public DriverDescriptor findDriver(@NotNull String driverIdOrName) {
-        // Try to find by ID
-        for (DataSourceProviderDescriptor pd : dataSourceProviders) {
-            DriverDescriptor driver = pd.getDriver(driverIdOrName);
-            if (driver != null) {
-                return driver;
-            }
-        }
-        // Try to find by name
-        for (DataSourceProviderDescriptor pd : dataSourceProviders) {
-            for (DriverDescriptor driver : pd.getDrivers()) {
-                if (driver.getName().equalsIgnoreCase(driverIdOrName)) {
-                    while (driver.getReplacedBy() != null) {
-                        driver = driver.getReplacedBy();
-                    }
-                    return driver;
+    public DBPDriver findDriver(@NotNull String driverIdOrName) {
+        DBPDriver driver = null;
+        if (driverIdOrName.contains(":")) {
+            String[] driverPath = driverIdOrName.split(":");
+            if (driverPath.length == 2) {
+                DataSourceProviderDescriptor dsProvider = getDataSourceProvider(driverPath[0]);
+                if (dsProvider != null) {
+                    driver = dsProvider.getDriver(driverPath[1]);
                 }
             }
         }
-        return null;
+        if (driver == null) {
+            // Try to find by ID
+            for (DataSourceProviderDescriptor pd : dataSourceProviders) {
+                driver = pd.getDriver(driverIdOrName);
+                if (driver != null) {
+                    break;
+                }
+            }
+        }
+        if (driver == null) {
+            // Try to find by name
+            for (DataSourceProviderDescriptor pd : dataSourceProviders) {
+                for (DBPDriver d : pd.getDrivers()) {
+                    if (d.getName().equalsIgnoreCase(driverIdOrName)) {
+                        driver = d;
+                    }
+                }
+            }
+        }
+        // Find replacement
+        if (driver != null) {
+            while (driver.getReplacedBy() != null) {
+                driver = driver.getReplacedBy();
+            }
+        }
+
+        return driver;
     }
 
     //////////////////////////////////////////////
@@ -375,9 +393,9 @@ public class DataSourceProviderRegistry implements DBPDataSourceProviderRegistry
                 }
                 xml.startElement(RegistryConstants.TAG_PROVIDER);
                 xml.addAttribute(RegistryConstants.ATTR_ID, provider.getId());
-                for (DriverDescriptor driver : provider.getDrivers()) {
-                    if (driver.isModified()) {
-                        driver.serialize(xml, false);
+                for (DBPDriver driver : provider.getDrivers()) {
+                    if (driver instanceof DriverDescriptor && ((DriverDescriptor) driver).isModified()) {
+                        ((DriverDescriptor) driver).serialize(xml, false);
                     }
                 }
                 xml.endElement();
@@ -490,11 +508,11 @@ public class DataSourceProviderRegistry implements DBPDataSourceProviderRegistry
     }
 
     @Override
-    public List<? extends DBPAuthModelDescriptor> getApplicableAuthModels(DBPDataSourceContainer dataSourceContainer) {
+    public List<? extends DBPAuthModelDescriptor> getApplicableAuthModels(DBPDriver driver) {
         List<DataSourceAuthModelDescriptor> models = new ArrayList<>();
         List<String> replaced = new ArrayList<>();
         for (DataSourceAuthModelDescriptor amd : authModels.values()) {
-            if (amd.appliesTo(dataSourceContainer, null)) {
+            if (amd.appliesTo(driver)) {
                 models.add(amd);
                 replaced.addAll(amd.getReplaces());
             }

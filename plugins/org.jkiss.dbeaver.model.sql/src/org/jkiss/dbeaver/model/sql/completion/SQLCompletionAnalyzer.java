@@ -95,6 +95,8 @@ public class SQLCompletionAnalyzer implements DBRRunnableParametrized<DBRProgres
         SQLWordPartDetector wordDetector = request.getWordDetector();
         SQLSyntaxManager syntaxManager = request.getContext().getSyntaxManager();
         String prevKeyWord = wordDetector.getPrevKeyWord();
+        boolean isPrevWordEmpty = CommonUtils.isEmpty(wordDetector.getPrevWords());
+        String prevDelimiter = wordDetector.getPrevDelimiter();
         {
             if (!CommonUtils.isEmpty(prevKeyWord)) {
                 if (syntaxManager.getDialect().isEntityQueryWord(prevKeyWord)) {
@@ -102,14 +104,18 @@ public class SQLCompletionAnalyzer implements DBRRunnableParametrized<DBRProgres
                     if (SQLConstants.KEYWORD_DELETE.equals(prevKeyWord)) {
                         request.setQueryType(null);
                     } else if (SQLConstants.KEYWORD_INTO.equals(prevKeyWord) &&
-                        !CommonUtils.isEmpty(wordDetector.getPrevWords()) &&
-                        ("(".equals(wordDetector.getPrevDelimiter()) || ",".equals(wordDetector.getPrevDelimiter())))
+                        !isPrevWordEmpty && ("(".equals(prevDelimiter) || ",".equals(prevDelimiter)))
                     {
+                        request.setQueryType(SQLCompletionRequest.QueryType.COLUMN);
+                    } else if (SQLConstants.KEYWORD_INTO.equals(prevKeyWord) && !isPrevWordEmpty && ("(*".equals(prevDelimiter) ||
+                            "{*".equals(prevDelimiter) || "[*".equals(prevDelimiter))) {
+                        wordDetector.shiftOffset(-SQLCompletionAnalyzer.ALL_COLUMNS_PATTERN.length());
+                        searchPrefix = SQLCompletionAnalyzer.ALL_COLUMNS_PATTERN;
                         request.setQueryType(SQLCompletionRequest.QueryType.COLUMN);
                     } else if (SQLConstants.KEYWORD_JOIN.equals(prevKeyWord)) {
                         request.setQueryType(SQLCompletionRequest.QueryType.JOIN);
                     } else {
-                        if (!CommonUtils.isEmpty(wordDetector.getPrevWords()) && CommonUtils.isEmpty(wordDetector.getPrevDelimiter())) {
+                        if (!isPrevWordEmpty && CommonUtils.isEmpty(prevDelimiter)) {
                             // Seems to be table alias
                             return;
                         }
@@ -117,7 +123,7 @@ public class SQLCompletionAnalyzer implements DBRRunnableParametrized<DBRProgres
                     }
                 } else if (syntaxManager.getDialect().isAttributeQueryWord(prevKeyWord)) {
                     request.setQueryType(SQLCompletionRequest.QueryType.COLUMN);
-                    if (!request.isSimpleMode() && CommonUtils.isEmpty(request.getWordPart()) && wordDetector.getPrevDelimiter().equals(SQLCompletionAnalyzer.ALL_COLUMNS_PATTERN)) {
+                    if (!request.isSimpleMode() && CommonUtils.isEmpty(request.getWordPart()) && prevDelimiter.equals(SQLCompletionAnalyzer.ALL_COLUMNS_PATTERN)) {
                         wordDetector.shiftOffset(-SQLCompletionAnalyzer.ALL_COLUMNS_PATTERN.length());
                         searchPrefix = SQLCompletionAnalyzer.ALL_COLUMNS_PATTERN;
                     }
@@ -160,8 +166,8 @@ public class SQLCompletionAnalyzer implements DBRRunnableParametrized<DBRProgres
                                     List<String> prevWords = wordDetector.getPrevWords();
                                     boolean waitsForValue = rootObject instanceof DBSEntity &&
                                         !CommonUtils.isEmpty(prevWords) &&
-                                        !CommonUtils.isEmpty(wordDetector.getPrevDelimiter()) &&
-                                        !wordDetector.getPrevDelimiter().endsWith(")");
+                                        !CommonUtils.isEmpty(prevDelimiter) &&
+                                        !prevDelimiter.endsWith(")");
                                     if (waitsForValue) {
                                         makeProposalsFromAttributeValues(dataSource, wordDetector, (DBSEntity) rootObject);
                                     }
@@ -202,11 +208,13 @@ public class SQLCompletionAnalyzer implements DBRRunnableParametrized<DBRProgres
                     SQLDialect sqlDialect = request.getContext().getDataSource().getSQLDialect();
                     String tableAlias = null;
                     if (ALL_COLUMNS_PATTERN.equals(wordPart)) {
-                        if (!CommonUtils.isEmpty(wordDetector.getPrevWords())) {
-                            String prevWord = wordDetector.getPrevWords().get(0);
-                            if (prevWord.contains(sqlDialect.getCatalogSeparator())) {
-                                int divPos = prevWord.lastIndexOf(sqlDialect.getCatalogSeparator());
-                                tableAlias = prevWord.substring(0, divPos);
+                        if (!isPrevWordEmpty) {
+                            if (!prevKeyWord.equalsIgnoreCase("INTO")) {
+                                String prevWord = wordDetector.getPrevWords().get(0);
+                                if (prevWord.contains(sqlDialect.getCatalogSeparator())) {
+                                    int divPos = prevWord.lastIndexOf(sqlDialect.getCatalogSeparator());
+                                    tableAlias = prevWord.substring(0, divPos);
+                                }
                             }
                         }
                     }
@@ -280,7 +288,7 @@ public class SQLCompletionAnalyzer implements DBRRunnableParametrized<DBRProgres
                 // SELECT ..
                 // Limit with FROM if we already have some expression
                 String delimiter = wordDetector.getPrevDelimiter();
-                if (!CommonUtils.isEmpty(wordDetector.getPrevWords()) && (CommonUtils.isEmpty(delimiter) || delimiter.endsWith(")"))) {
+                if (!isPrevWordEmpty && (CommonUtils.isEmpty(delimiter) || delimiter.endsWith(")"))) {
                     // last expression ends with space or with ")"
                     allowedKeywords = new HashSet<>();
                     allowedKeywords.add(SQLConstants.KEYWORD_FROM);
@@ -311,7 +319,7 @@ public class SQLCompletionAnalyzer implements DBRRunnableParametrized<DBRProgres
                     if (keywordType == DBPKeywordType.TYPE) {
                         continue;
                     }
-                    if (request.getQueryType() == SQLCompletionRequest.QueryType.COLUMN && !(keywordType == DBPKeywordType.FUNCTION || keywordType == DBPKeywordType.KEYWORD)) {
+                    if (request.getQueryType() == SQLCompletionRequest.QueryType.COLUMN && !(keywordType == DBPKeywordType.FUNCTION || keywordType == DBPKeywordType.KEYWORD || keywordType == DBPKeywordType.OTHER)) {
                         continue;
                     }
                     if (allowedKeywords != null && !allowedKeywords.contains(keyWord)) {
@@ -406,7 +414,8 @@ public class SQLCompletionAnalyzer implements DBRRunnableParametrized<DBRProgres
         }
 
         DBSInstance defaultInstance = dataSource == null ? null : dataSource.getDefaultInstance();
-        DBSObject selectedObject = defaultInstance == null ? null : DBUtils.getActiveInstanceObject(request.getContext().getExecutionContext());
+        DBCExecutionContext executionContext = request.getContext().getExecutionContext();
+        DBSObject selectedObject = defaultInstance == null || executionContext == null ? null : DBUtils.getActiveInstanceObject(executionContext);
         boolean hideDups = request.getContext().isHideDuplicates() && selectedObject != null;
         if (hideDups) {
             for (int i = 0; i < proposals.size(); i++) {
@@ -466,7 +475,8 @@ public class SQLCompletionAnalyzer implements DBRRunnableParametrized<DBRProgres
     private void makeProposalsFromQueryParts() {
         String wordPart = request.getWordPart();
         // Find all aliases matching current word
-        if (!CommonUtils.isEmpty(request.getActiveQuery().getText()) && !CommonUtils.isEmpty(wordPart)) {
+        SQLScriptElement activeQuery = request.getActiveQuery();
+        if (activeQuery != null && !CommonUtils.isEmpty(activeQuery.getText()) && !CommonUtils.isEmpty(wordPart)) {
             if (wordPart.indexOf(request.getContext().getSyntaxManager().getStructSeparator()) != -1 || wordPart.equals(ALL_COLUMNS_PATTERN)) {
                 return;
             }
@@ -986,7 +996,8 @@ public class SQLCompletionAnalyzer implements DBRRunnableParametrized<DBRProgres
         @NotNull Map<String, Object> params)
     {
         String alias = null;
-        if (SQLConstants.KEYWORD_FROM.equals(request.getWordDetector().getPrevKeyWord())) {
+        String prevWord = request.getWordDetector().getPrevKeyWord();
+        if (SQLConstants.KEYWORD_FROM.equals(prevWord) || SQLConstants.KEYWORD_JOIN.equals(prevWord)) {
             if (object instanceof DBSEntity && ((DBSEntity) object).getDataSource().getContainer().getPreferenceStore().getBoolean(SQLModelPreferences.SQL_PROPOSAL_INSERT_TABLE_ALIAS)) {
                 SQLDialect dialect = SQLUtils.getDialectFromObject(object);
                 if (dialect.supportsAliasInSelect()) {

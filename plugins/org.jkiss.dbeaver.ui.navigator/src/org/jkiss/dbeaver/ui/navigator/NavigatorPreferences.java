@@ -16,8 +16,6 @@
  */
 package org.jkiss.dbeaver.ui.navigator;
 
-import org.jkiss.dbeaver.ui.editors.DatabaseEditorPreferences;
-
 /**
  * NavigatorPreferences
  */
@@ -36,6 +34,12 @@ public class NavigatorPreferences {
     public static final String NAVIGATOR_SHOW_SQL_PREVIEW = "navigator.editor.show.preview"; //$NON-NLS-1$
     public static final String NAVIGATOR_SHOW_OBJECT_TIPS = "navigator.show.objects.tips"; //$NON-NLS-1$
     public static final String NAVIGATOR_LONG_LIST_FETCH_SIZE = "navigator.long.list.fetch.size"; //$NON-NLS-1$
+    public static final String NAVIGATOR_SHOW_STATISTICS_INFO = "navigator.show.statistics.info"; //$NON-NLS-1$
+    public static final String NAVIGATOR_SHOW_CONNECTION_HOST_NAME = "navigator.show.connection.host"; //$NON-NLS-1$
+    public static final String NAVIGATOR_SHOW_NODE_ACTIONS = "navigator.show.node.actions"; //$NON-NLS-1$
+
+    public static final String NAVIGATOR_SHOW_TOOLTIPS = "navigator.show.tooltips"; //$NON-NLS-1$
+    public static final String NAVIGATOR_SHOW_CONTENTS_IN_TOOLTIP = "navigator.show.tooltips.file.contents"; //$NON-NLS-1$
 
     public static final String ENTITY_EDITOR_DETACH_INFO = "entity.editor.info.detach"; //$NON-NLS-1$
     public static final String ENTITY_EDITOR_INFO_SASH_STATE = "entity.editor.info.sash.state"; //$NON-NLS-1$

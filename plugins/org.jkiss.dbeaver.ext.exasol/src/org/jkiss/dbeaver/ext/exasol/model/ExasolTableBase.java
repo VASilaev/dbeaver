@@ -17,12 +17,6 @@
  */
 package org.jkiss.dbeaver.ext.exasol.model;
 
-import java.math.BigDecimal;
-import java.sql.ResultSet;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
-
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
@@ -40,6 +34,12 @@ import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.struct.DBSEntityAssociation;
 import org.jkiss.dbeaver.model.struct.DBSObject;
 import org.jkiss.dbeaver.model.struct.rdb.DBSTableIndex;
+
+import java.math.BigDecimal;
+import java.sql.ResultSet;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
 
 /**
  * @author Karl Griesser
@@ -59,7 +59,7 @@ public abstract class ExasolTableBase extends JDBCTable<ExasolDataSource, Exasol
 
     public ExasolTableBase(DBRProgressMonitor monitor, ExasolSchema schema, ResultSet dbResult) {
         super(schema, true);
-        setName(JDBCUtils.safeGetString(dbResult, "TABLE_NAME"));
+        setName(JDBCUtils.safeGetString(dbResult, "COLUMN_TABLE"));
         this.remarks = JDBCUtils.safeGetString(dbResult, "REMARKS");
         this.objectType = JDBCUtils.safeGetString(dbResult, "TABLE_TYPE");
         this.objectId =JDBCUtils.safeGetBigDecimal(dbResult, "OBJECT_ID");

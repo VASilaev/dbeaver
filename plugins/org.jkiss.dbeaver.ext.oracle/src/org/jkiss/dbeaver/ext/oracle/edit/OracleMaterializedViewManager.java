@@ -51,13 +51,13 @@ public class OracleMaterializedViewManager extends SQLObjectEditor<OracleMateria
     }
 
     @Override
-    protected void validateObjectProperties(ObjectChangeCommand command, Map<String, Object> options)
+    protected void validateObjectProperties(DBRProgressMonitor monitor, ObjectChangeCommand command, Map<String, Object> options)
         throws DBException
     {
         if (CommonUtils.isEmpty(command.getObject().getName())) {
             throw new DBException("View name cannot be empty"); //$NON-NLS-1$
         }
-        if (CommonUtils.isEmpty(command.getObject().getObjectDefinitionText(null, DBPScriptObject.EMPTY_OPTIONS))) {
+        if (CommonUtils.isEmpty(command.getObject().getObjectDefinitionText(monitor, DBPScriptObject.EMPTY_OPTIONS))) {
             throw new DBException("View definition cannot be empty"); //$NON-NLS-1$
         }
     }
@@ -66,7 +66,7 @@ public class OracleMaterializedViewManager extends SQLObjectEditor<OracleMateria
     @Override
     public DBSObjectCache<? extends DBSObject, OracleMaterializedView> getObjectsCache(OracleMaterializedView object)
     {
-        return object.getSchema().mviewCache;
+        return (DBSObjectCache) object.getSchema().tableCache;
     }
 
     @Override
@@ -105,8 +105,14 @@ public class OracleMaterializedViewManager extends SQLObjectEditor<OracleMateria
         final String lineSeparator = GeneralUtils.getDefaultLineSeparator();
         boolean hasComment = command.getProperty("comment") != null;
         if (!hasComment || command.getProperties().size() > 1) {
-            decl.append("CREATE MATERIALIZED VIEW ").append(view.getFullyQualifiedName(DBPEvaluationContext.DDL)).append(lineSeparator) //$NON-NLS-1$
-                .append("AS ").append(view.getObjectDefinitionText(null, DBPScriptObject.EMPTY_OPTIONS)); //$NON-NLS-1$
+            String mViewDefinition = view.getObjectDefinitionText(null, DBPScriptObject.EMPTY_OPTIONS).trim();
+            if (mViewDefinition.startsWith("CREATE MATERIALIZED VIEW")) {
+                if (mViewDefinition.endsWith(";")) mViewDefinition = mViewDefinition.substring(0, mViewDefinition.length() - 1);
+                decl.append(mViewDefinition);
+            } else {
+                decl.append("CREATE MATERIALIZED VIEW ").append(view.getFullyQualifiedName(DBPEvaluationContext.DDL)).append(lineSeparator) //$NON-NLS-1$
+                    .append("AS ").append(mViewDefinition); //$NON-NLS-1$
+            }
             if (view.isPersisted()) {
                 actions.add(
                     new SQLDatabasePersistAction("Drop view", "DROP MATERIALIZED VIEW " + view.getFullyQualifiedName(DBPEvaluationContext.DDL))); //$NON-NLS-2$

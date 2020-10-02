@@ -61,7 +61,7 @@ import java.util.regex.Pattern;
 /**
  * PostgreDataSource
  */
-public class PostgreDataSource extends JDBCDataSource implements DBSInstanceContainer, IAdaptable {
+public class PostgreDataSource extends JDBCDataSource implements DBSInstanceContainer, IAdaptable, DBPObjectStatisticsCollector {
 
     private static final Log log = Log.getLog(PostgreDataSource.class);
 
@@ -70,10 +70,14 @@ public class PostgreDataSource extends JDBCDataSource implements DBSInstanceCont
     private PostgreServerExtension serverExtension;
     private String serverVersion;
 
+    private volatile boolean hasStatistics;
+
     public PostgreDataSource(DBRProgressMonitor monitor, DBPDataSourceContainer container)
         throws DBException
     {
         super(monitor, container, new PostgreDialect());
+
+        hasStatistics = !container.getPreferenceStore().getBoolean(ModelPreferences.READ_EXPENSIVE_STATISTICS);
     }
 
     @Override
@@ -105,50 +109,59 @@ public class PostgreDataSource extends JDBCDataSource implements DBSInstanceCont
             PostgreDatabase defDatabase = new PostgreDatabase(monitor, this, activeDatabaseName);
             dbList.add(defDatabase);
         } else {
-            // Make initial connection to read database list
-            final boolean showTemplates = CommonUtils.toBoolean(configuration.getProviderProperty(PostgreConstants.PROP_SHOW_TEMPLATES_DB));
-            StringBuilder catalogQuery = new StringBuilder(
-                    "SELECT db.oid,db.*" +
-                            "\nFROM pg_catalog.pg_database db WHERE datallowconn ");
-            if (!showTemplates) {
-                catalogQuery.append(" AND NOT datistemplate ");
-            }
-            DBSObjectFilter catalogFilters = getContainer().getObjectFilter(PostgreDatabase.class, null, false);
-            if (catalogFilters != null) {
-                JDBCUtils.appendFilterClause(catalogQuery, catalogFilters, "datname", false);
-            }
-            catalogQuery.append("\nORDER BY db.datname");
-            try (Connection bootstrapConnection = openConnection(monitor, null, "Read PostgreSQL database list")) {
-                // Read server version info here - it is needed during database metadata fetch (#8061)
-                getDataSource().readDatabaseServerVersion(bootstrapConnection.getMetaData());
-                // Get all databases
-                try (PreparedStatement dbStat = bootstrapConnection.prepareStatement(catalogQuery.toString())) {
-                    if (catalogFilters != null) {
-                        JDBCUtils.setFilterParameters(dbStat, 1, catalogFilters);
-                    }
-                    try (ResultSet dbResult = dbStat.executeQuery()) {
-                        while (dbResult.next()) {
-                            PostgreDatabase database = new PostgreDatabase(monitor, this, dbResult);
-                            dbList.add(database);
-                        }
-                    }
-                }
-                if (activeDatabaseName == null) {
-                    try (PreparedStatement stat = bootstrapConnection.prepareStatement("SELECT current_database()")) {
-                        try (ResultSet rs = stat.executeQuery()) {
-                            if (rs.next()) {
-                                activeDatabaseName = JDBCUtils.safeGetString(rs, 1);
-                            }
-                        }
-                    }
-                }
-            } catch (SQLException e) {
-                throw new DBException("Can't connect ot remote PostgreSQL server", e);
-            }
+            loadAvailableDatabases(monitor, configuration, dbList);
         }
         databaseCache.setCache(dbList);
         // Initiate default context
         getDefaultInstance().checkInstanceConnection(monitor);
+    }
+
+    private void loadAvailableDatabases(@NotNull DBRProgressMonitor monitor, DBPConnectionConfiguration configuration, List<PostgreDatabase> dbList) throws DBException {
+        // Make initial connection to read database list
+        final boolean showTemplates = CommonUtils.toBoolean(configuration.getProviderProperty(PostgreConstants.PROP_SHOW_TEMPLATES_DB));
+        final boolean showUnavailable = CommonUtils.toBoolean(configuration.getProviderProperty(PostgreConstants.PROP_SHOW_UNAVAILABLE_DB));
+        StringBuilder catalogQuery = new StringBuilder("SELECT db.oid,db.* FROM pg_catalog.pg_database db WHERE 1 = 1");
+        if (!showUnavailable) {
+            catalogQuery.append(" AND datallowconn");
+        }
+        if (!showTemplates) {
+            catalogQuery.append(" AND NOT datistemplate ");
+        }
+        DBSObjectFilter catalogFilters = getContainer().getObjectFilter(PostgreDatabase.class, null, false);
+        if (catalogFilters != null) {
+            JDBCUtils.appendFilterClause(catalogQuery, catalogFilters, "datname", false);
+        }
+        catalogQuery.append("\nORDER BY db.datname");
+        DBExecUtils.startContextInitiation(getContainer());
+        try (Connection bootstrapConnection = openConnection(monitor, null, "Read PostgreSQL database list")) {
+            // Read server version info here - it is needed during database metadata fetch (#8061)
+            getDataSource().readDatabaseServerVersion(bootstrapConnection.getMetaData());
+            // Get all databases
+            try (PreparedStatement dbStat = bootstrapConnection.prepareStatement(catalogQuery.toString())) {
+                if (catalogFilters != null) {
+                    JDBCUtils.setFilterParameters(dbStat, 1, catalogFilters);
+                }
+                try (ResultSet dbResult = dbStat.executeQuery()) {
+                    while (dbResult.next()) {
+                        PostgreDatabase database = new PostgreDatabase(monitor, this, dbResult);
+                        dbList.add(database);
+                    }
+                }
+            }
+            if (activeDatabaseName == null) {
+                try (PreparedStatement stat = bootstrapConnection.prepareStatement("SELECT current_database()")) {
+                    try (ResultSet rs = stat.executeQuery()) {
+                        if (rs.next()) {
+                            activeDatabaseName = JDBCUtils.safeGetString(rs, 1);
+                        }
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            throw new DBException("Can't connect ot remote PostgreSQL server", e);
+        } finally {
+            DBExecUtils.finishContextInitiation(getContainer());
+        }
     }
 
     @Override
@@ -158,7 +171,12 @@ public class PostgreDataSource extends JDBCDataSource implements DBSInstanceCont
         final DBWHandlerConfiguration sslConfig = getContainer().getActualConnectionConfiguration().getHandler(PostgreConstants.HANDLER_SSL);
         if (sslConfig != null && sslConfig.isEnabled()) {
             try {
-                initSSL(props, sslConfig);
+                boolean useProxy = sslConfig.getBooleanProperty(PostgreConstants.PROP_SSL_PROXY);
+                if (useProxy) {
+                    initProxySSL(props, sslConfig);
+                } else {
+                    initServerSSL(props, sslConfig);
+                }
             } catch (Exception e) {
                 throw new DBCException("Error configuring SSL certificates", e);
             }
@@ -168,7 +186,7 @@ public class PostgreDataSource extends JDBCDataSource implements DBSInstanceCont
         return props;
     }
 
-    private void initSSL(Map<String, String> props, DBWHandlerConfiguration sslConfig) throws Exception {
+    private void initServerSSL(Map<String, String> props, DBWHandlerConfiguration sslConfig) {
         props.put(PostgreConstants.PROP_SSL, "true");
 
         final String rootCertProp = sslConfig.getStringProperty(PostgreConstants.PROP_SSL_ROOT_CERT);
@@ -195,20 +213,23 @@ public class PostgreDataSource extends JDBCDataSource implements DBSInstanceCont
         props.put("sslpasswordcallback", DefaultCallbackHandler.class.getName());
     }
 
+    private void initProxySSL(Map<String, String> props, DBWHandlerConfiguration sslConfig) {
+        // No special config
+        //initServerSSL(props, sslConfig);
+    }
+
     @Override
     protected PostgreExecutionContext createExecutionContext(JDBCRemoteInstance instance, String type) {
         return new PostgreExecutionContext((PostgreDatabase) instance, type);
     }
 
     protected void initializeContextState(@NotNull DBRProgressMonitor monitor, @NotNull JDBCExecutionContext context, JDBCExecutionContext initFrom) throws DBException {
+        ((PostgreExecutionContext)context).refreshDefaults(monitor, true);
         if (initFrom != null) {
-            ((PostgreExecutionContext)context).setDefaultsFrom((PostgreExecutionContext) initFrom);
             final PostgreSchema activeSchema = ((PostgreExecutionContext)initFrom).getDefaultSchema();
-            if (activeSchema != null) {
+            if (activeSchema != null && activeSchema != ((PostgreExecutionContext) context).getDefaultSchema()) {
                 ((PostgreExecutionContext)context).setDefaultSchema(monitor, activeSchema);
             }
-        } else {
-            ((PostgreExecutionContext)context).refreshDefaults(monitor, true);
         }
     }
 
@@ -261,23 +282,18 @@ public class PostgreDataSource extends JDBCDataSource implements DBSInstanceCont
     }
 
     @Override
-    public Collection<? extends PostgreDatabase> getChildren(@NotNull DBRProgressMonitor monitor)
-        throws DBException
-    {
+    public Collection<? extends PostgreDatabase> getChildren(@NotNull DBRProgressMonitor monitor) {
         return getDatabases();
     }
 
     @Override
-    public PostgreDatabase getChild(@NotNull DBRProgressMonitor monitor, @NotNull String childName)
-        throws DBException
-    {
+    public PostgreDatabase getChild(@NotNull DBRProgressMonitor monitor, @NotNull String childName) {
         return getDatabase(childName);
     }
 
+    @NotNull
     @Override
-    public Class<? extends PostgreDatabase> getChildType(@NotNull DBRProgressMonitor monitor)
-        throws DBException
-    {
+    public Class<? extends PostgreDatabase> getPrimaryChildType(@NotNull DBRProgressMonitor monitor) {
         return PostgreDatabase.class;
     }
 
@@ -311,9 +327,9 @@ public class PostgreDataSource extends JDBCDataSource implements DBSInstanceCont
                 if (CommonUtils.isEmpty(conConfig.getUrl()) || !CommonUtils.isEmpty(conConfig.getHostName())) {
                     conConfig.setDatabaseName(instance.getName());
                     conConfig.setUrl(getContainer().getDriver().getDataSourceProvider().getConnectionURL(getContainer().getDriver(), conConfig));
-                } else {
+                } //else {
                     //String url = conConfig.getUrl();
-                }
+                //}
 
                 pgConnection = super.openConnection(monitor, context, purpose);
             }
@@ -475,6 +491,51 @@ public class PostgreDataSource extends JDBCDataSource implements DBSInstanceCont
         return serverVersion;
     }
 
+    public boolean supportsRoles() {
+        return getServerType().supportsRoles() && !getContainer().getNavigatorSettings().isShowOnlyEntities();
+    }
+
+    @Override
+    public boolean isStatisticsCollected() {
+        return hasStatistics;
+    }
+
+    @Override
+    public void collectObjectStatistics(DBRProgressMonitor monitor, boolean totalSizeOnly, boolean forceRefresh) throws DBException {
+        if (hasStatistics && !forceRefresh) {
+            return;
+        }
+        hasStatistics = true;
+        if (!getServerType().supportsDatabaseSize()) {
+            return;
+        }
+        try (JDBCSession session = DBUtils.openMetaSession(monitor, this, "Load table status")) {
+            Collection<PostgreDatabase> databases = getDatabases();
+            try (JDBCPreparedStatement dbStat = session.prepareStatement(
+                "SELECT db.datname,pg_database_size(db.oid) FROM pg_catalog.pg_database db " +
+                    (databases.size() == 1 ? "WHERE db.oid=?" : "")))
+            {
+                if (databases.size() == 1) {
+                    dbStat.setLong(1, databases.iterator().next().getObjectId());
+                }
+                try (JDBCResultSet dbResult = dbStat.executeQuery()) {
+                    while (dbResult.next()) {
+                        String dbName = JDBCUtils.safeGetString(dbResult, 1);
+                        long dbSize = dbResult.getLong(2);
+                        PostgreDatabase database = getDatabase(dbName);
+                        if (database != null) {
+                            database.setDbTotalSize(dbSize);
+                        }
+                    }
+                }
+            } catch (SQLException e) {
+                throw new DBCException(e, session.getExecutionContext());
+            }
+        } finally {
+            hasStatistics = true;
+        }
+    }
+
     class DatabaseCache extends JDBCObjectLookupCache<PostgreDataSource, PostgreDatabase>
     {
         @Override
@@ -518,7 +579,7 @@ public class PostgreDataSource extends JDBCDataSource implements DBSInstanceCont
         }
     }
 
-    private Pattern ERROR_POSITION_PATTERN = Pattern.compile("\\n\\s*\\p{L}+\\s*: ([0-9]+)");
+    private final Pattern ERROR_POSITION_PATTERN = Pattern.compile("\\n\\s*\\p{L}+\\s*: ([0-9]+)");
 
     @Nullable
     @Override
@@ -587,5 +648,4 @@ public class PostgreDataSource extends JDBCDataSource implements DBSInstanceCont
         }
         return null;
     }
-
 }

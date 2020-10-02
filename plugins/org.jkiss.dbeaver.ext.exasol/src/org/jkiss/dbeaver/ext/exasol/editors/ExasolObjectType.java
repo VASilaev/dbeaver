@@ -18,11 +18,7 @@
 package org.jkiss.dbeaver.ext.exasol.editors;
 
 import org.jkiss.dbeaver.DBException;
-import org.jkiss.dbeaver.ext.exasol.model.ExasolTableColumn;
-import org.jkiss.dbeaver.ext.exasol.model.ExasolDataSource;
-import org.jkiss.dbeaver.ext.exasol.model.ExasolSchema;
-import org.jkiss.dbeaver.ext.exasol.model.ExasolTable;
-import org.jkiss.dbeaver.ext.exasol.model.ExasolView;
+import org.jkiss.dbeaver.ext.exasol.model.*;
 import org.jkiss.dbeaver.model.DBIcon;
 import org.jkiss.dbeaver.model.DBPImage;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
@@ -47,7 +43,11 @@ public enum ExasolObjectType implements DBSObjectType {
         }
 
     }),
-    VIEW(DBIcon.TREE_VIEW, ExasolView.class, new ObjectFinder());
+    VIEW(DBIcon.TREE_VIEW, ExasolView.class, null),
+    SCRIPT(DBIcon.TREE_PROCEDURE, ExasolScript.class, null), 
+    FOREIGNKEY(DBIcon.TREE_FOREIGN_KEY, ExasolTableForeignKey.class, null),
+    PRIMARYKEY(DBIcon.TREE_UNIQUE_KEY, ExasolTableUniqueKey.class, null)
+    ;
 
 
     private final DBPImage image;

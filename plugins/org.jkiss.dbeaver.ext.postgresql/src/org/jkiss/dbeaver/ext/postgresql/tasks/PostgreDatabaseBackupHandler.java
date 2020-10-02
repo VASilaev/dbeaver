@@ -5,6 +5,8 @@ import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.ext.postgresql.model.PostgreSchema;
 import org.jkiss.dbeaver.ext.postgresql.model.PostgreTableBase;
+import org.jkiss.dbeaver.model.DBPEvaluationContext;
+import org.jkiss.dbeaver.model.DBUtils;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.runtime.DBRRunnableContext;
 import org.jkiss.dbeaver.model.struct.DBSObject;
@@ -106,19 +108,27 @@ public class PostgreDatabaseBackupHandler extends PostgreNativeToolHandler<Postg
             for (PostgreTableBase table : arg.getTables()) {
                 cmd.add("-t");
                 // Use explicit quotes in case of quoted identifiers (#5950)
-                cmd.add(escapeCLIIdentifier(table.getSchema().getName() + "." + table.getName()));
+                cmd.add(escapeCLIIdentifier(table.getFullyQualifiedName(DBPEvaluationContext.DDL)));
             }
         } else if (!CommonUtils.isEmpty(arg.getSchemas())) {
             for (PostgreSchema schema : arg.getSchemas()) {
                 cmd.add("-n");
                 // Use explicit quotes in case of quoted identifiers (#5950)
-                cmd.add(escapeCLIIdentifier(schema.getName()));
+                cmd.add(escapeCLIIdentifier(DBUtils.getQuotedIdentifier(schema)));
             }
         }
     }
 
     private static String escapeCLIIdentifier(String name) {
-        return "\"" + name.replace("\"", "\\\"") + "\"";
+        if (RuntimeUtils.isPlatformWindows()) {
+            // On Windows it is simple
+            return "\"" + name.replace("\"", "\\\"") + "\"";
+        } else {
+            // On Unixes it is more tricky (https://unix.stackexchange.com/questions/30903/how-to-escape-quotes-in-shell)
+            //return "\"" + name.replace("\"", "\"\\\"\"") + "\"";
+            return name;
+            //return "\"" + name.replace("\"", "\\\"") + "\"";
+        }
     }
 
     @Override

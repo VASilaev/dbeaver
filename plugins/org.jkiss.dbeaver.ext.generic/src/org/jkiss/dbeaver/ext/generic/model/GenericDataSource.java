@@ -260,10 +260,10 @@ public class GenericDataSource extends JDBCDataSource implements DBPTermProvider
                 Properties shutdownProps = new Properties();
                 DBPConnectionConfiguration connectionInfo = getContainer().getActualConnectionConfiguration();
                 if (!CommonUtils.isEmpty(connectionInfo.getUserName())) {
-                    shutdownProps.put(DBConstants.DATA_SOURCE_PROPERTY_USER, getConnectionUserName(connectionInfo));
+                    shutdownProps.put(DBConstants.DATA_SOURCE_PROPERTY_USER, connectionInfo.getUserName());
                 }
                 if (!CommonUtils.isEmpty(connectionInfo.getUserPassword())) {
-                    shutdownProps.put(DBConstants.DATA_SOURCE_PROPERTY_PASSWORD, getConnectionUserPassword(connectionInfo));
+                    shutdownProps.put(DBConstants.DATA_SOURCE_PROPERTY_PASSWORD, connectionInfo.getUserPassword());
                 }
 
                 final Driver driver = getDriverInstance(new VoidProgressMonitor()); // Use void monitor - driver already loaded
@@ -349,17 +349,17 @@ public class GenericDataSource extends JDBCDataSource implements DBPTermProvider
 
 
     @Override
-    public Collection<GenericView> getViews(DBRProgressMonitor monitor) throws DBException {
+    public List<? extends GenericTableBase> getViews(DBRProgressMonitor monitor) throws DBException {
         return structureContainer == null ? null : structureContainer.getViews(monitor);
     }
 
     @Override
-    public Collection<GenericTable> getPhysicalTables(DBRProgressMonitor monitor) throws DBException {
+    public List<? extends GenericTable> getPhysicalTables(DBRProgressMonitor monitor) throws DBException {
         return structureContainer == null ? null : structureContainer.getPhysicalTables(monitor);
     }
 
     @Override
-    public Collection<GenericTableBase> getTables(DBRProgressMonitor monitor)
+    public List<? extends GenericTableBase> getTables(DBRProgressMonitor monitor)
         throws DBException {
         return structureContainer == null ? null : structureContainer.getTables(monitor);
     }
@@ -626,8 +626,9 @@ public class GenericDataSource extends JDBCDataSource implements DBPTermProvider
         }
     }
 
+    @NotNull
     @Override
-    public Class<? extends DBSObject> getChildType(@NotNull DBRProgressMonitor monitor) throws DBException {
+    public Class<? extends DBSObject> getPrimaryChildType(@NotNull DBRProgressMonitor monitor) throws DBException {
         if (!CommonUtils.isEmpty(catalogs)) {
             return GenericCatalog.class;
         } else if (!CommonUtils.isEmpty(schemas)) {
@@ -847,8 +848,9 @@ public class GenericDataSource extends JDBCDataSource implements DBPTermProvider
             return GenericDataSource.this;
         }
 
+        @NotNull
         @Override
-        public Class<? extends DBSEntity> getChildType(@NotNull DBRProgressMonitor monitor) throws DBException {
+        public Class<? extends DBSEntity> getPrimaryChildType(@NotNull DBRProgressMonitor monitor) throws DBException {
             return GenericTable.class;
         }
 

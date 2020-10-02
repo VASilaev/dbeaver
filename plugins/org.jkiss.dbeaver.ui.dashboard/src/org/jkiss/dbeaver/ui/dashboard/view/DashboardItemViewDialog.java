@@ -18,29 +18,17 @@ package org.jkiss.dbeaver.ui.dashboard.view;
 
 import org.eclipse.jface.dialogs.IDialogConstants;
 import org.eclipse.jface.dialogs.IDialogSettings;
-import org.eclipse.jface.viewers.*;
-import org.eclipse.swt.SWT;
 import org.eclipse.swt.layout.FillLayout;
 import org.eclipse.swt.layout.GridData;
-import org.eclipse.swt.widgets.Button;
 import org.eclipse.swt.widgets.Composite;
-import org.eclipse.swt.widgets.Shell;
-import org.eclipse.swt.widgets.Table;
-import org.eclipse.ui.IWorkbenchPart;
 import org.jkiss.dbeaver.ui.UIUtils;
-import org.jkiss.dbeaver.ui.controls.ListContentProvider;
 import org.jkiss.dbeaver.ui.dashboard.control.DashboardItem;
 import org.jkiss.dbeaver.ui.dashboard.control.DashboardList;
 import org.jkiss.dbeaver.ui.dashboard.control.DashboardListViewer;
 import org.jkiss.dbeaver.ui.dashboard.internal.UIDashboardActivator;
-import org.jkiss.dbeaver.ui.dashboard.model.DashboardViewConfiguration;
+import org.jkiss.dbeaver.ui.dashboard.internal.UIDashboardMessages;
 import org.jkiss.dbeaver.ui.dashboard.model.DashboardViewContainer;
-import org.jkiss.dbeaver.ui.dashboard.registry.DashboardDescriptor;
-import org.jkiss.dbeaver.ui.dashboard.registry.DashboardRegistry;
 import org.jkiss.dbeaver.ui.dialogs.BaseDialog;
-import org.jkiss.utils.CommonUtils;
-
-import java.util.ArrayList;
 
 /**
  * Dashboard view dialog
@@ -53,7 +41,7 @@ public class DashboardItemViewDialog extends BaseDialog {
     private final DashboardItem sourceItem;
 
     public DashboardItemViewDialog(DashboardViewContainer parentPart, DashboardItem sourceItem) {
-        super(parentPart.getSite().getShell(), "View Dashboard", null);
+        super(parentPart.getSite().getShell(), UIDashboardMessages.dialog_dashboard_item_view_title, null);
 
         this.parentPart = parentPart;
         this.sourceItem = sourceItem;

@@ -136,7 +136,7 @@ public class GenericConnectionPage extends ConnectionPageWithAuth implements ICo
 
             portText = new Text(settingsGroup, SWT.BORDER);
             gd = new GridData(GridData.CENTER);
-            gd.widthHint = 60;
+            gd.widthHint = UIUtils.getFontHeight(portText) * 7;
             portText.setLayoutData(gd);
             //portText.addVerifyListener(UIUtils.INTEGER_VERIFY_LISTENER);
             portText.addModifyListener(textListener);
@@ -271,6 +271,9 @@ public class GenericConnectionPage extends ConnectionPageWithAuth implements ICo
 
     @Override
     protected void updateDriverInfo(DBPDriver driver) {
+        if (!isCustom) {
+            site.getActiveDataSource().getConnectionConfiguration().setUrl(null);
+        }
         parseSampleURL(driver);
         saveAndUpdate();
     }
@@ -338,19 +341,25 @@ public class GenericConnectionPage extends ConnectionPageWithAuth implements ICo
                 }
             }
             if (portText != null) {
-                if (!CommonUtils.isEmpty(connectionInfo.getHostPort())) {
-                    portText.setText(String.valueOf(connectionInfo.getHostPort()));
-                } else if (site.getDriver().getDefaultPort() != null) {
-                    portText.setText(site.getDriver().getDefaultPort());
-                } else {
-                    portText.setText(""); //$NON-NLS-1$
+                if (site.isNew() && CommonUtils.isEmpty(connectionInfo.getHostPort())) {
+                    portText.setText(CommonUtils.notEmpty(site.getDriver().getDefaultPort()));
+                } else if (!CommonUtils.isEmpty(connectionInfo.getHostPort())) {
+                    portText.setText(connectionInfo.getHostPort());
                 }
             }
             if (serverText != null) {
-                serverText.setText(CommonUtils.notEmpty(connectionInfo.getServerName()));
+                if (site.isNew() && CommonUtils.isEmpty(connectionInfo.getServerName())) {
+                    serverText.setText(CommonUtils.notEmpty(site.getDriver().getDefaultServer()));
+                } else {
+                    serverText.setText(CommonUtils.notEmpty(connectionInfo.getServerName()));
+                }
             }
             if (dbText != null) {
-                dbText.setText(CommonUtils.notEmpty(connectionInfo.getDatabaseName()));
+                if (site.isNew() && CommonUtils.isEmpty(connectionInfo.getDatabaseName())) {
+                    dbText.setText(CommonUtils.notEmpty(site.getDriver().getDefaultDatabase()));
+                } else {
+                    dbText.setText(CommonUtils.notEmpty(connectionInfo.getDatabaseName()));
+                }
             }
             if (pathText != null) {
                 pathText.setText(CommonUtils.notEmpty(connectionInfo.getDatabaseName()));
@@ -462,8 +471,7 @@ public class GenericConnectionPage extends ConnectionPageWithAuth implements ICo
         showControlGroup(GROUP_LOGIN, !driver.isAnonymousAccess());
         updateCreateButton(driver);
 
-
-        settingsGroup.layout();
+        settingsGroup.getParent().layout();
     }
 
     private void updateCreateButton(DBPDriver driver) {
@@ -488,7 +496,7 @@ public class GenericConnectionPage extends ConnectionPageWithAuth implements ICo
 
         saveSettings(testDataSource);
         DBPConnectionConfiguration cfg = testDataSource.getConnectionConfiguration();
-        cfg.setUrl(cfg.getUrl() + paramCreate);
+        cfg.setDatabaseName(cfg.getDatabaseName() + paramCreate);
         String databaseName = cfg.getDatabaseName();
         testDataSource.setName(databaseName);
 
@@ -537,12 +545,14 @@ public class GenericConnectionPage extends ConnectionPageWithAuth implements ICo
         List<Control> controlList = propGroupMap.get(group);
         if (controlList != null) {
             for (Control control : controlList) {
-                GridData gd = (GridData)control.getLayoutData();
+                Object gd = control.getLayoutData();
                 if (gd == null) {
                     gd = new GridData(GridData.BEGINNING);
                     control.setLayoutData(gd);
                 }
-                gd.exclude = !show;
+                if (gd instanceof GridData) {
+                    ((GridData)gd).exclude = !show;
+                }
                 control.setVisible(show);
             }
         }

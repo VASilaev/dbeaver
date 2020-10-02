@@ -18,6 +18,8 @@
 package org.jkiss.dbeaver.ui.controls.resultset;
 
 import org.eclipse.jface.action.IContributionManager;
+import org.jkiss.code.NotNull;
+import org.jkiss.code.Nullable;
 
 /**
  * ResultSet decorator.
@@ -29,16 +31,33 @@ public interface IResultSetDecorator {
     long FEATURE_STATUS_BAR         = 2;
     long FEATURE_PANELS             = 4;
     long FEATURE_EDIT               = 8;
+    long FEATURE_PRESENTATIONS      = 16;
+    long FEATURE_LINKS              = 32;
 
     long getDecoratorFeatures();
 
+    /**
+     * Primary presentation ID.
+     * @return presentation ID or null.
+     */
+    @Nullable
+    String getPreferredPresentation();
+
+    @Nullable
     String getEmptyDataMessage();
 
+    @Nullable
     String getEmptyDataDescription();
 
-    void fillContributions(IContributionManager contributionManager);
+    IResultSetLabelProvider getDataLabelProvider();
 
-    void registerDragAndDrop(IResultSetPresentation presentation);
+    /**
+     * Fill additional menu actions
+     */
+    void fillContributions(@NotNull IContributionManager contributionManager);
 
+    void registerDragAndDrop(@NotNull IResultSetPresentation presentation);
+
+    @Nullable
     Boolean getAutoRecordMode();
 }

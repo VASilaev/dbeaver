@@ -18,6 +18,7 @@
 package org.jkiss.dbeaver.ext.mysql.ui.config;
 
 import org.jkiss.dbeaver.DBException;
+import org.jkiss.dbeaver.ext.mysql.MySQLUtils;
 import org.jkiss.dbeaver.ext.mysql.model.MySQLDataSource;
 import org.jkiss.dbeaver.ext.mysql.model.MySQLUser;
 import org.jkiss.dbeaver.ext.mysql.ui.internal.MySQLUIMessages;
@@ -86,30 +87,33 @@ public class MySQLCommandChangeUser extends DBECommandComposite<MySQLUser, UserP
                     }
                 });
         }
-        StringBuilder script = new StringBuilder();
         boolean hasSet;
         final MySQLDataSource dataSource = getObject().getDataSource();
-        if (dataSource.isMariaDB() ? dataSource.isServerVersionAtLeast(10, 2) : dataSource.isServerVersionAtLeast(5, 7)) {
-            hasSet = generateAlterScript(script);
+        if (MySQLUtils.isAlterUSerSupported(dataSource)) {
+            StringBuilder script = new StringBuilder();
+            if (generateAlterScript(script)) {
+                actions.add(new SQLDatabasePersistAction(MySQLUIMessages.edit_command_change_user_action_update_user_record, script.toString()));
+            }
         } else {
-            hasSet = generateUpdateScript(script);
+            String updateSQL = generateUpdateScript();
+            if (updateSQL != null) {
+                actions.add(new SQLDatabasePersistAction(MySQLUIMessages.edit_command_change_user_action_update_user_record, updateSQL));
+            }
+            updateSQL = generatePasswordSet();
+            if (updateSQL != null) {
+                actions.add(new SQLDatabasePersistAction(MySQLUIMessages.edit_command_change_user_action_update_user_record, updateSQL));
+            }
         }
-        if (hasSet) {
-            actions.add(new SQLDatabasePersistAction(MySQLUIMessages.edit_command_change_user_action_update_user_record, script.toString()));
-        }
-        return actions.toArray(new DBEPersistAction[actions.size()]);
+        return actions.toArray(new DBEPersistAction[0]);
     }
 
-    private boolean generateUpdateScript(StringBuilder script) {
+    private String generateUpdateScript() {
+        StringBuilder script = new StringBuilder();
         script.append("UPDATE mysql.user SET "); //$NON-NLS-1$
         boolean hasSet = false;
         for (Map.Entry<Object, Object> entry : getProperties().entrySet()) {
-            if (entry.getKey() == UserPropertyHandler.PASSWORD_CONFIRM) {
-                continue;
-            }
             String delim = hasSet ? "," : ""; //$NON-NLS-1$ //$NON-NLS-2$
             switch (UserPropertyHandler.valueOf((String) entry.getKey())) {
-                case PASSWORD: script.append(delim).append("Password=PASSWORD(").append(SQLUtils.quoteString(getObject(), CommonUtils.toString(entry.getValue()))).append(")"); hasSet = true; break; //$NON-NLS-1$ //$NON-NLS-2$
                 case MAX_QUERIES: script.append(delim).append("Max_Questions=").append(CommonUtils.toInt(entry.getValue())); hasSet = true; break; //$NON-NLS-1$
                 case MAX_UPDATES: script.append(delim).append("Max_Updates=").append(CommonUtils.toInt(entry.getValue())); hasSet = true; break; //$NON-NLS-1$
                 case MAX_CONNECTIONS: script.append(delim).append("Max_Connections=").append(CommonUtils.toInt(entry.getValue())); hasSet = true; break; //$NON-NLS-1$
@@ -117,8 +121,20 @@ public class MySQLCommandChangeUser extends DBECommandComposite<MySQLUser, UserP
                 default: break;
             }
         }
+        if (!hasSet) {
+            return null;
+        }
         script.append(" WHERE User='").append(getObject().getUserName()).append("' AND Host='").append(getObject().getHost()).append("'"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-        return hasSet;
+        return script.toString();
+    }
+
+    private String generatePasswordSet() {
+        Object passwordValue = getProperties().get(UserPropertyHandler.PASSWORD.toString());
+        if (passwordValue == null) {
+            return null;
+        }
+        return "SET PASSWORD FOR '" + getObject().getUserName() + "'@'" + getObject().getHost() +
+            "' = PASSWORD('" + passwordValue + "')";
     }
 
     private boolean generateAlterScript(StringBuilder script) {

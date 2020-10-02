@@ -190,6 +190,7 @@ class ResultSetFilterPanel extends Composite implements IContentProposalProvider
                     executePanel.setEnabled(true);
                     executePanel.redraw();
                     filtersClearButton.setEnabled(!CommonUtils.isEmpty(filterText));
+                    filtersProposalAdapter.refresh();
                 }
             });
             this.filtersText.addTraverseListener(e -> {
@@ -345,7 +346,7 @@ class ResultSetFilterPanel extends Composite implements IContentProposalProvider
             String filterText = filtersText.getText();
             filtersText.setEnabled(supportsDataFilter);
             executePanel.setEnabled(supportsDataFilter);
-            filtersClearButton.setEnabled(viewer.getModel().getDataFilter().hasFilters() || !CommonUtils.isEmpty(filterText));
+            filtersClearButton.setEnabled(viewer.getModel().getDataFilter().hasFilters() || viewer.getModel().getDataFilter().hasOrdering() || !CommonUtils.isEmpty(filterText));
             filtersSaveButton.setEnabled(viewer.getDataContainer() instanceof DBSEntity);
             // Update history buttons
             if (historyPosition > 0) {
@@ -603,14 +604,21 @@ class ResultSetFilterPanel extends Composite implements IContentProposalProvider
 
     @Override
     public IContentProposal[] getProposals(String contents, int position) {
+    	if(!viewer.getPreferenceStore().getBoolean(ResultSetPreferences.RESULT_SET_FILTER_AUTO_COMPLETE_PROPOSIAL)) {
+    		return null;
+    	}
         SQLSyntaxManager syntaxManager = new SQLSyntaxManager();
         DBPDataSource dataSource = viewer.getDataSource();
         if (dataSource != null) {
             syntaxManager.init(dataSource);
         }
         SQLWordPartDetector wordDetector = new SQLWordPartDetector(new Document(contents), syntaxManager, position);
-        final String word = wordDetector.getFullWord().toLowerCase(Locale.ENGLISH);
+        String word = wordDetector.getFullWord();
         final List<IContentProposal> proposals = new ArrayList<>();
+
+        if (CommonUtils.isEmptyTrimmed(word)) word = contents;
+        word = word.toLowerCase(Locale.ENGLISH);
+        String attrName = word;
 
         final DBRRunnableWithProgress reader = monitor -> {
             DBDAttributeBinding[] attributes = viewer.getModel().getAttributes();
@@ -619,7 +627,7 @@ class ResultSetFilterPanel extends Composite implements IContentProposalProvider
                     continue;
                 }
                 final String name = DBUtils.getUnQuotedIdentifier(attribute.getDataSource(), attribute.getName());
-                if (CommonUtils.isEmpty(word) || name.toLowerCase(Locale.ENGLISH).startsWith(word)) {
+                if (CommonUtils.isEmpty(attrName) || name.toLowerCase(Locale.ENGLISH).startsWith(attrName)) {
                     final String content = DBUtils.getQuotedIdentifier(attribute) + " ";
                     proposals.add(
                         new ContentProposalExt(
@@ -638,7 +646,7 @@ class ResultSetFilterPanel extends Composite implements IContentProposalProvider
         String[] filterKeywords = { SQLConstants.KEYWORD_AND, SQLConstants.KEYWORD_OR, SQLConstants.KEYWORD_IS, SQLConstants.KEYWORD_NOT, SQLConstants.KEYWORD_NULL };
 
         for (String kw : filterKeywords) {
-            if (word.isEmpty() || kw.startsWith(word.toUpperCase())) {
+            if (attrName.isEmpty() || kw.startsWith(attrName.toUpperCase())) {
                 if (dataSource != null) {
                     kw = dataSource.getSQLDialect().storesUnquotedCase().transform(kw);
                 }

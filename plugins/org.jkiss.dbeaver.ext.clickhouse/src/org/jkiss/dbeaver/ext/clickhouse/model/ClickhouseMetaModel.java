@@ -17,6 +17,7 @@
 package org.jkiss.dbeaver.ext.clickhouse.model;
 
 import org.jkiss.code.NotNull;
+import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.ext.generic.model.*;
 import org.jkiss.dbeaver.ext.generic.model.meta.GenericMetaModel;
@@ -50,6 +51,24 @@ public class ClickhouseMetaModel extends GenericMetaModel
     @Override
     public JDBCBasicDataTypeCache<GenericStructContainer, ? extends JDBCDataType> createDataTypeCache(@NotNull GenericStructContainer container) {
         return new ClickhouseDataTypeCache(container);
+    }
+
+    @Override
+    public GenericSchema createSchemaImpl(@NotNull GenericDataSource dataSource, @Nullable GenericCatalog catalog, @NotNull String schemaName) throws DBException {
+        return new ClickhouseSchema(dataSource, catalog, schemaName);
+    }
+
+    @Override
+    public GenericTableBase createTableImpl(GenericStructContainer container, @Nullable String tableName, @Nullable String tableType, @Nullable JDBCResultSet dbResult) {
+        if (tableType != null && isView(tableType)) {
+            return new ClickhouseView(container, tableName, tableType, dbResult);
+        } else {
+            return new ClickhouseTable(
+                container,
+                tableName,
+                tableType,
+                dbResult);
+        }
     }
 
     @Override

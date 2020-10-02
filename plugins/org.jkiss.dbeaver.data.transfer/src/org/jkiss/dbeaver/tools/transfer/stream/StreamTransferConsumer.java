@@ -16,15 +16,14 @@
  */
 package org.jkiss.dbeaver.tools.transfer.stream;
 
+import org.eclipse.osgi.util.NLS;
 import org.jkiss.code.NotNull;
+import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.model.*;
 import org.jkiss.dbeaver.model.app.DBPProject;
-import org.jkiss.dbeaver.model.data.DBDAttributeBinding;
-import org.jkiss.dbeaver.model.data.DBDContent;
-import org.jkiss.dbeaver.model.data.DBDContentStorage;
-import org.jkiss.dbeaver.model.data.DBDDisplayFormat;
+import org.jkiss.dbeaver.model.data.*;
 import org.jkiss.dbeaver.model.exec.DBCException;
 import org.jkiss.dbeaver.model.exec.DBCResultSet;
 import org.jkiss.dbeaver.model.exec.DBCSession;
@@ -43,6 +42,7 @@ import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.runtime.serialize.DBPObjectSerializer;
 import org.jkiss.dbeaver.tools.transfer.DTUtils;
 import org.jkiss.dbeaver.tools.transfer.IDataTransferConsumer;
+import org.jkiss.dbeaver.tools.transfer.internal.DTMessages;
 import org.jkiss.dbeaver.utils.ContentUtils;
 import org.jkiss.dbeaver.utils.GeneralUtils;
 import org.jkiss.dbeaver.utils.RuntimeUtils;
@@ -76,6 +76,7 @@ public class StreamTransferConsumer implements IDataTransferConsumer<StreamConsu
     public static final String VARIABLE_INDEX = "index";
     public static final String VARIABLE_DATE = "date";
     public static final String VARIABLE_PROJECT = "project";
+    public static final String VARIABLE_CONN_TYPE = "connectionType";
     public static final String VARIABLE_FILE = "file";
 
     public static final int OUT_FILE_BUFFER_SIZE = 100000;
@@ -96,7 +97,7 @@ public class StreamTransferConsumer implements IDataTransferConsumer<StreamConsu
     private long lobCount;
     private File outputFile;
     private StreamExportSite exportSite;
-    private Map<Object, Object> processorProperties;
+    private Map<String, Object> processorProperties;
     private StringWriter outputBuffer;
     private boolean initialized = false;
     private TransferParameters parameters;
@@ -222,8 +223,8 @@ public class StreamTransferConsumer implements IDataTransferConsumer<StreamConsu
     }
 
     private void initExporter(DBCSession session) throws DBCException {
-        if (settings.getFormatterProfile() != null) {
-            session.setDataFormatterProfile(settings.getFormatterProfile());
+        if (settings.getFormatterProfile() != null && session instanceof DBDFormatSettingsExt) {
+            ((DBDFormatSettingsExt)session).setDataFormatterProfile(settings.getFormatterProfile());
         }
 
         exportSite = new StreamExportSite();
@@ -345,7 +346,7 @@ public class StreamTransferConsumer implements IDataTransferConsumer<StreamConsu
     }
 
     @Override
-    public void initTransfer(DBSObject sourceObject, StreamConsumerSettings settings, TransferParameters parameters, IStreamDataExporter processor, Map<Object, Object> processorProperties) {
+    public void initTransfer(DBSObject sourceObject, StreamConsumerSettings settings, TransferParameters parameters, IStreamDataExporter processor, Map<String, Object> processorProperties) {
         this.dataContainer = (DBSDataContainer) sourceObject;
         this.parameters = parameters;
         this.processor = processor;
@@ -392,6 +393,17 @@ public class StreamTransferConsumer implements IDataTransferConsumer<StreamConsu
         }
     }
 
+    @Override
+    public Object getTargetObject() {
+        return null;
+    }
+
+    @Nullable
+    @Override
+    public Object getTargetObjectContainer() {
+        return null;
+    }
+
     private void executeFinishCommand() {
         String commandLine = translatePattern(
             settings.getFinishProcessCommand(),
@@ -401,7 +413,9 @@ public class StreamTransferConsumer implements IDataTransferConsumer<StreamConsu
         try {
             processDescriptor.execute();
         } catch (DBException e) {
-            DBWorkbench.getPlatformUI().showError("Run process", "Error running process [" + commandLine + "]", e);
+
+            DBWorkbench.getPlatformUI().showError(DTMessages.stream_transfer_consumer_title_run_process,
+                    NLS.bind(DTMessages.stream_transfer_consumer_message_error_running_process, commandLine), e);
         }
     }
 
@@ -522,6 +536,11 @@ public class StreamTransferConsumer implements IDataTransferConsumer<StreamConsu
                 }
                 case VARIABLE_FILE:
                     return targetFile == null ? "" : targetFile.getAbsolutePath();
+                case VARIABLE_CONN_TYPE:
+                    if (dataContainer == null) {
+                        return null;
+                    }
+                    return dataContainer.getDataSource().getContainer().getConnectionConfiguration().getConnectionType().getId();
             }
             return null;
         });
@@ -587,7 +606,7 @@ public class StreamTransferConsumer implements IDataTransferConsumer<StreamConsu
         }
 
         @Override
-        public Map<Object, Object> getProperties() {
+        public Map<String, Object> getProperties() {
             return processorProperties;
         }
 

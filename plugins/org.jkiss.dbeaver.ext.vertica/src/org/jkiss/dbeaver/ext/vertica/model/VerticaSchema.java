@@ -20,7 +20,10 @@ import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
-import org.jkiss.dbeaver.ext.generic.model.*;
+import org.jkiss.dbeaver.ext.generic.model.GenericCatalog;
+import org.jkiss.dbeaver.ext.generic.model.GenericDataSource;
+import org.jkiss.dbeaver.ext.generic.model.GenericSchema;
+import org.jkiss.dbeaver.ext.generic.model.GenericTableBase;
 import org.jkiss.dbeaver.model.DBPSystemObject;
 import org.jkiss.dbeaver.model.DBUtils;
 import org.jkiss.dbeaver.model.exec.jdbc.JDBCPreparedStatement;
@@ -108,8 +111,8 @@ public class VerticaSchema extends GenericSchema implements DBPSystemObject
 
 * */
     @Association
-    public Collection<VerticaTable> getFlexTables(DBRProgressMonitor monitor) throws DBException {
-        Collection<GenericTableBase> tables = getTables(monitor);
+    public List<VerticaTable> getFlexTables(DBRProgressMonitor monitor) throws DBException {
+        List<? extends GenericTableBase> tables = getTables(monitor);
         if (tables != null) {
             List<VerticaTable> filtered = new ArrayList<>();
             for (GenericTableBase table : tables) {

@@ -74,7 +74,7 @@ public class GenericSchema extends GenericObjectContainer implements DBSSchema, 
 
     @Nullable
     @Override
-    @Property(viewable = true, multiline = true, order = 100)
+    //@Property(viewable = true, multiline = true, order = 100)
     public String getDescription()
     {
         return null;
@@ -86,8 +86,9 @@ public class GenericSchema extends GenericObjectContainer implements DBSSchema, 
         return catalog != null ? catalog : getDataSource().getContainer();
     }
 
+    @NotNull
     @Override
-    public Class<? extends DBSEntity> getChildType(@NotNull DBRProgressMonitor monitor)
+    public Class<? extends DBSEntity> getPrimaryChildType(@NotNull DBRProgressMonitor monitor)
         throws DBException
     {
         return GenericTable.class;

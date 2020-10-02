@@ -53,13 +53,16 @@ public interface IResultSetController extends IDataController, DBPContextProvide
     String MENU_ID_LAYOUT = "layout";
     String MENU_GROUP_EDIT = "edit";
     String MENU_GROUP_EXPORT = "results_export";
-    String MENU_GROUP_ADDITIONS = IWorkbenchActionConstants.MB_ADDITIONS;
+    String MENU_GROUP_ADDITIONS = "results_additions";//IWorkbenchActionConstants.MB_ADDITIONS;
 
     @NotNull
     IResultSetContainer getContainer();
 
     @NotNull
     IResultSetDecorator getDecorator();
+
+    @NotNull
+    IResultSetLabelProvider getLabelProvider();
 
     @NotNull
     ResultSetModel getModel();
@@ -189,6 +192,8 @@ public interface IResultSetController extends IDataController, DBPContextProvide
     void updatePanelsContent(boolean forceRefresh);
 
     void setDataFilter(final DBDDataFilter dataFilter, boolean refreshData);
+
+    void setSegmentFetchSize(Integer segmentFetchSize);
 
     /**
      * Enable/disable viewer actions. May be used by editors to "lock" RSV actions like navigation, edit, etc.

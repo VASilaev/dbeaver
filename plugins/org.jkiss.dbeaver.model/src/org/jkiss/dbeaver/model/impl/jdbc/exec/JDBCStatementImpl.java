@@ -22,11 +22,11 @@ import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.ModelPreferences;
 import org.jkiss.dbeaver.model.exec.DBCException;
-import org.jkiss.dbeaver.model.exec.DBCExecutionSource;
 import org.jkiss.dbeaver.model.exec.jdbc.JDBCResultSet;
 import org.jkiss.dbeaver.model.exec.jdbc.JDBCSession;
 import org.jkiss.dbeaver.model.exec.jdbc.JDBCStatement;
 import org.jkiss.dbeaver.model.impl.AbstractStatement;
+import org.jkiss.dbeaver.model.impl.jdbc.JDBCTrace;
 import org.jkiss.dbeaver.model.impl.jdbc.JDBCUtils;
 import org.jkiss.dbeaver.model.messages.ModelMessages;
 import org.jkiss.dbeaver.model.qm.QMUtils;
@@ -57,7 +57,6 @@ public class JDBCStatementImpl<STATEMENT extends Statement> extends AbstractStat
     private long rsOffset = -1;
     private long rsMaxRows = -1;
 
-    private DBCExecutionSource source;
     private int updateCount;
     private Throwable executeError;
 
@@ -236,19 +235,6 @@ public class JDBCStatementImpl<STATEMENT extends Statement> extends AbstractStat
     }
 
     @Nullable
-    @Override
-    public DBCExecutionSource getStatementSource()
-    {
-        return this.source;
-    }
-
-    @Override
-    public void setStatementSource(DBCExecutionSource source)
-    {
-        this.source = source;
-    }
-
-    @Nullable
     protected JDBCResultSet makeResultSet(@Nullable ResultSet resultSet)
         throws SQLException
     {
@@ -313,6 +299,9 @@ public class JDBCStatementImpl<STATEMENT extends Statement> extends AbstractStat
         this.executeError = null;
         if (isQMLoggingEnabled()) {
             QMUtils.getDefaultHandler().handleStatementExecuteBegin(this);
+        }
+        if (JDBCTrace.isApiTraceEnabled()) {
+            JDBCTrace.traceQueryBegin(getQueryString());
         }
         this.startBlock();
     }

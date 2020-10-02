@@ -22,6 +22,7 @@ import org.jkiss.dbeaver.model.*;
 import org.jkiss.dbeaver.model.data.DBDBinaryFormatter;
 import org.jkiss.dbeaver.model.data.DBDDataFilter;
 import org.jkiss.dbeaver.model.impl.data.formatters.BinaryFormatterHexNative;
+import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.sql.SQLConstants;
 import org.jkiss.dbeaver.model.sql.SQLDialect;
 import org.jkiss.dbeaver.model.sql.SQLStateType;
@@ -124,6 +125,11 @@ public abstract class AbstractSQLDialect implements SQLDialect {
     protected void addFunctions(Collection<String> allFunctions) {
         functions.addAll(allFunctions);
         addKeywords(allFunctions, DBPKeywordType.FUNCTION);
+    }
+
+    protected void turnFunctionIntoKeyword(String function) {
+        functions.remove(function);
+        addKeywords(Collections.singletonList(function), DBPKeywordType.KEYWORD);
     }
 
     protected void addDataTypes(Collection<String> allTypes) {
@@ -357,8 +363,8 @@ public abstract class AbstractSQLDialect implements SQLDialect {
     }
 
     @Override
-    public String addFiltersToQuery(DBPDataSource dataSource, String query, DBDDataFilter filter) {
-        return SQLSemanticProcessor.addFiltersToQuery(dataSource, query, filter);
+    public String addFiltersToQuery(DBRProgressMonitor monitor, DBPDataSource dataSource, String query, DBDDataFilter filter) {
+        return SQLSemanticProcessor.addFiltersToQuery(monitor, dataSource, query, filter);
     }
 
     @Override
@@ -467,7 +473,8 @@ public abstract class AbstractSQLDialect implements SQLDialect {
         }
         if (SQLConstants.KEYWORD_SELECT.equals(firstKeyword) ||
             "SHOW".equals(firstKeyword) ||
-            "USE".equals(firstKeyword))
+            "USE".equals(firstKeyword) ||
+            "SET".equals(firstKeyword))
         {
             return false;
         }
@@ -622,19 +629,24 @@ public abstract class AbstractSQLDialect implements SQLDialect {
         sql.append(getStoredProcedureCallInitialClause(proc)).append("(");
         if (!inParameters.isEmpty()) {
             boolean first = true;
-            for (int i = 0; i < inParameters.size(); i++) {
-                DBSProcedureParameter parameter = inParameters.get(i);
-                if (!first) {
-                    sql.append(",");
-                }
+            for (DBSProcedureParameter parameter : inParameters) {
                 switch (parameter.getParameterKind()) {
                     case IN:
+                        if (!first) {
+                            sql.append(",");
+                        }
                         sql.append(":").append(CommonUtils.escapeIdentifier(parameter.getName()));
                         break;
                     case RETURN:
                         continue;
                     default:
-                        sql.append("?");
+                        if (isStoredProcedureCallIncludesOutParameters()) {
+                            if (!first) {
+                                sql.append(",");
+                            }
+                            sql.append("?");
+                        }
+                        break;
                 }
                 String typeName = parameter.getParameterType().getFullTypeName();
 //                sql.append("\t-- put the ").append(parameter.getName())
@@ -649,6 +661,10 @@ public abstract class AbstractSQLDialect implements SQLDialect {
             sql.append(" }");
         }
         sql.append("\n\n");
+    }
+
+    protected boolean isStoredProcedureCallIncludesOutParameters() {
+        return true;
     }
 
     @Override

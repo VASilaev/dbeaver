@@ -16,13 +16,13 @@
  */
 package org.jkiss.dbeaver.registry;
 
-import org.eclipse.core.net.proxy.IProxyService;
 import org.eclipse.core.runtime.Platform;
 import org.jkiss.code.NotNull;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.ModelPreferences;
 import org.jkiss.dbeaver.model.DBPDataSourceContainer;
+import org.jkiss.dbeaver.model.access.DBASession;
 import org.jkiss.dbeaver.model.app.*;
 import org.jkiss.dbeaver.model.connection.DBPDataSourceProviderRegistry;
 import org.jkiss.dbeaver.model.data.DBDRegistry;
@@ -37,14 +37,11 @@ import org.jkiss.dbeaver.registry.formatter.DataFormatterRegistry;
 import org.jkiss.dbeaver.registry.language.PlatformLanguageRegistry;
 import org.jkiss.dbeaver.runtime.IPluginService;
 import org.jkiss.dbeaver.runtime.jobs.KeepAliveListenerJob;
-import org.jkiss.dbeaver.runtime.net.GlobalProxySelector;
-import org.jkiss.dbeaver.utils.GeneralUtils;
 import org.jkiss.dbeaver.utils.RuntimeUtils;
 import org.jkiss.utils.CommonUtils;
 
 import java.io.File;
 import java.io.IOException;
-import java.net.ProxySelector;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.StandardOpenOption;
@@ -93,11 +90,8 @@ public abstract class BasePlatformImpl implements DBPPlatform, DBPPlatformLangua
         }
 
         // Navigator model
-        this.navigatorModel = new DBNModel(this, true);
+        this.navigatorModel = new DBNModel(this, new WorkspaceSession());
         this.navigatorModel.initialize();
-
-        // Activate proxy service
-        activateProxyService();
 
         // Activate plugin services
         for (IPluginService pluginService : PluginServiceRegistry.getInstance().getServices()) {
@@ -130,15 +124,6 @@ public abstract class BasePlatformImpl implements DBPPlatform, DBPPlatformLangua
             this.navigatorModel.dispose();
             //this.navigatorModel = null;
         }
-    }
-
-    protected void installProxySelector() {
-        // Init default network settings
-        ProxySelector defProxySelector = GeneralUtils.adapt(this, ProxySelector.class);
-        if (defProxySelector == null) {
-            defProxySelector = new GlobalProxySelector(ProxySelector.getDefault());
-        }
-        ProxySelector.setDefault(defProxySelector);
     }
 
     @NotNull
@@ -237,14 +222,6 @@ public abstract class BasePlatformImpl implements DBPPlatform, DBPPlatformLangua
         return DriverDescriptor.getCustomDriversHome();
     }
 
-    private void activateProxyService() {
-        try {
-            log.debug("Proxy service '" + IProxyService.class.getName() + "' loaded");
-        } catch (Throwable e) {
-            log.debug("Proxy service not found");
-        }
-    }
-
     // Patch config and add/update -nl parameter
     private void setConfigNLS(List<String> lines, String nl) {
         int vmArgsPos = -1, nlPos = -1;
@@ -271,4 +248,15 @@ public abstract class BasePlatformImpl implements DBPPlatform, DBPPlatformLangua
         }
     }
 
+    private class WorkspaceSession implements DBASession {
+        @Override
+        public String getSessionId() {
+            return getWorkspace().getWorkspaceId();
+        }
+
+        @Override
+        public boolean isApplicationSession() {
+            return true;
+        }
+    }
 }

@@ -1,6 +1,5 @@
 package org.jkiss.dbeaver.ext.greenplum.model;
 
-import org.jkiss.dbeaver.ext.greenplum.model.GreenplumDataSource;
 import org.jkiss.dbeaver.ext.postgresql.model.PostgreServerExtension;
 import org.jkiss.dbeaver.ext.postgresql.model.PostgreTableBase;
 import org.junit.Test;
@@ -85,6 +84,6 @@ public class GreenplumWithClauseBuilderTest {
         when(serverExtension.supportsOids()).thenReturn(supportOids);
         when(dataSource.getServerType()).thenReturn(serverExtension);
         when(table.getDataSource()).thenReturn(dataSource);
-        when(table.isHasOids()).thenReturn(hasOids);
+        when(table.isHasOids() && dataSource.getServerType().supportsHasOidsColumn()).thenReturn(hasOids);
     }
 }

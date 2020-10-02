@@ -1,7 +1,6 @@
 /*
  * DBeaver - Universal Database Manager
  * Copyright (C) 2010-2020 DBeaver Corp and others
- * Copyright (C) 2011-2012 Eugene Fradkin (eugene.fradkin@gmail.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +17,8 @@
 package org.jkiss.dbeaver.ext.mysql.ui.config;
 
 import org.jkiss.code.Nullable;
+import org.jkiss.dbeaver.DBException;
+import org.jkiss.dbeaver.ext.mysql.MySQLUtils;
 import org.jkiss.dbeaver.ext.mysql.model.MySQLDataSource;
 import org.jkiss.dbeaver.ext.mysql.model.MySQLUser;
 import org.jkiss.dbeaver.ext.mysql.ui.internal.MySQLUIMessages;
@@ -29,10 +30,10 @@ import org.jkiss.dbeaver.model.exec.DBCSession;
 import org.jkiss.dbeaver.model.impl.edit.AbstractObjectManager;
 import org.jkiss.dbeaver.model.impl.edit.DBECommandAbstract;
 import org.jkiss.dbeaver.model.impl.edit.SQLDatabasePersistAction;
-import org.jkiss.dbeaver.model.impl.edit.SQLScriptCommand;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.struct.DBSObject;
 import org.jkiss.dbeaver.model.struct.cache.DBSObjectCache;
+import org.jkiss.utils.CommonUtils;
 
 import java.util.Map;
 
@@ -40,6 +41,11 @@ import java.util.Map;
  * MySQLUserManager
  */
 public class MySQLUserManager extends AbstractObjectManager<MySQLUser> implements DBEObjectMaker<MySQLUser, MySQLDataSource>, DBECommandFilter<MySQLUser> {
+
+    // Perhaps we should set it in UI? For now it is always disabled
+    private static final String OPTION_SUPPRESS_FLUSH_PRIVILEGES = "suppress.flushPrivileges";
+
+    private static final boolean USE_DIRECT_UPDATE = false;
 
     @Override
     public long getMakerOptions(DBPDataSource dataSource)
@@ -93,13 +99,24 @@ public class MySQLUserManager extends AbstractObjectManager<MySQLUser> implement
     @Override
     public void filterCommands(DBECommandQueue<MySQLUser> queue)
     {
-        if (!queue.isEmpty()) {
+        if (USE_DIRECT_UPDATE && !queue.isEmpty() && !MySQLUtils.isAlterUSerSupported(queue.getObject().getDataSource())) {
             // Add privileges flush to the tail
             queue.add(
-                new SQLScriptCommand<>(
+                new DBECommandAbstract<MySQLUser>(
                     queue.getObject(),
-                    MySQLUIMessages.edit_user_manager_command_flush_privileges,
-                    "FLUSH PRIVILEGES")); //$NON-NLS-1$
+                    MySQLUIMessages.edit_user_manager_command_flush_privileges) {
+                    @Override
+                    public DBEPersistAction[] getPersistActions(DBRProgressMonitor monitor, DBCExecutionContext executionContext, Map<String, Object> options) throws DBException {
+                        if (CommonUtils.getOption(options, OPTION_SUPPRESS_FLUSH_PRIVILEGES)) {
+                            return new DBEPersistAction[0];
+                        }
+                        return new DBEPersistAction[] {
+                            new SQLDatabasePersistAction(
+                                getTitle(),
+                                "FLUSH PRIVILEGES")
+                        };
+                    }
+                });
         }
     }
 
@@ -107,6 +124,17 @@ public class MySQLUserManager extends AbstractObjectManager<MySQLUser> implement
         protected CommandCreateUser(MySQLUser user)
         {
             super(user, MySQLUIMessages.edit_user_manager_command_create_user);
+        }
+
+        @Override
+        public void validateCommand(DBRProgressMonitor monitor, Map<String, Object> options) throws DBException {
+            if (CommonUtils.isEmpty(getObject().getUserName())) {
+                throw new DBException("Can't create user with empty name");
+            }
+            if (CommonUtils.isEmpty(getObject().getHost())) {
+                throw new DBException("Can't create user with empty host name");
+            }
+            super.validateCommand(monitor, options);
         }
     }
 

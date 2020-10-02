@@ -78,9 +78,8 @@ public class SSHTunnelConfiguratorUI implements IObjectPropertyConfigurator<DBWH
     public void createControl(Composite parent, Runnable propertyChangeListener)
     {
         final Composite composite = new Composite(parent, SWT.NONE);
-        GridData gd = new GridData(GridData.FILL_BOTH);
         //gd.minimumHeight = 200;
-        composite.setLayoutData(gd);
+        composite.setLayoutData(new GridData(GridData.FILL_BOTH));
         composite.setLayout(new GridLayout(1, false));
 
         {
@@ -92,7 +91,10 @@ public class SSHTunnelConfiguratorUI implements IObjectPropertyConfigurator<DBWH
             hostText = new Text(hostPortComp, SWT.BORDER); //$NON-NLS-2$
             hostText.setLayoutData(new GridData(GridData.FILL_HORIZONTAL));
             portText = UIUtils.createLabelSpinner(hostPortComp, SSHUIMessages.model_ssh_configurator_label_port, SSHConstants.DEFAULT_SSH_PORT, StandardConstants.MIN_PORT_VALUE, StandardConstants.MAX_PORT_VALUE);
-
+            GridData gdt = new GridData(GridData.HORIZONTAL_ALIGN_BEGINNING);
+            gdt.widthHint = UIUtils.getFontHeight(portText) * 7;
+            portText.setLayoutData(gdt);
+            
             userNameText = UIUtils.createLabelText(settingsGroup, SSHUIMessages.model_ssh_configurator_label_user_name, null, SWT.BORDER, new GridData(GridData.FILL_HORIZONTAL)); //$NON-NLS-2$
 
             authMethodCombo = UIUtils.createLabelCombo(settingsGroup, SSHUIMessages.model_ssh_configurator_combo_auth_method, SWT.DROP_DOWN | SWT.READ_ONLY);
@@ -127,7 +129,7 @@ public class SSHTunnelConfiguratorUI implements IObjectPropertyConfigurator<DBWH
             Group advancedGroup = UIUtils.createControlGroup(composite, SSHUIMessages.model_ssh_configurator_group_advanced, 4, GridData.FILL_HORIZONTAL | GridData.VERTICAL_ALIGN_BEGINNING, SWT.DEFAULT);
 
             tunnelImplCombo = UIUtils.createLabelCombo(advancedGroup, SSHUIMessages.model_ssh_configurator_label_implementation, SWT.DROP_DOWN | SWT.READ_ONLY);
-            gd = new GridData(GridData.HORIZONTAL_ALIGN_BEGINNING);
+            GridData gd = new GridData(GridData.HORIZONTAL_ALIGN_BEGINNING);
             gd.horizontalSpan = 3;
             tunnelImplCombo.setLayoutData(gd);
             for (SSHImplementationDescriptor it : SSHImplementationRegistry.getInstance().getDescriptors()) {
@@ -136,27 +138,28 @@ public class SSHTunnelConfiguratorUI implements IObjectPropertyConfigurator<DBWH
 
             localHostText = UIUtils.createLabelText(advancedGroup, SSHUIMessages.model_ssh_configurator_label_local_host, null, SWT.BORDER, new GridData(GridData.FILL_HORIZONTAL));
             localHostText.setToolTipText(SSHUIMessages.model_ssh_configurator_label_local_host_description);
+            localHostText.setLayoutData(new GridData(GridData.FILL_HORIZONTAL));
             remoteHostText = UIUtils.createLabelText(advancedGroup, SSHUIMessages.model_ssh_configurator_label_remote_host, null, SWT.BORDER, new GridData(GridData.FILL_HORIZONTAL));
             remoteHostText.setToolTipText(SSHUIMessages.model_ssh_configurator_label_remote_host_description);
+            remoteHostText.setLayoutData(new GridData(GridData.FILL_HORIZONTAL));
             localPortSpinner = UIUtils.createLabelSpinner(advancedGroup, SSHUIMessages.model_ssh_configurator_label_local_port, 0, StandardConstants.MIN_PORT_VALUE, StandardConstants.MAX_PORT_VALUE);
             localPortSpinner.setToolTipText(SSHUIMessages.model_ssh_configurator_label_local_port_description);
+            localPortSpinner.setLayoutData(new GridData(GridData.FILL_HORIZONTAL));
             remotePortSpinner = UIUtils.createLabelSpinner(advancedGroup, SSHUIMessages.model_ssh_configurator_label_remote_port, 0, StandardConstants.MIN_PORT_VALUE, StandardConstants.MAX_PORT_VALUE);
             remotePortSpinner.setToolTipText(SSHUIMessages.model_ssh_configurator_label_remote_port_description);
+            remotePortSpinner.setLayoutData(new GridData(GridData.FILL_HORIZONTAL));
 
             UIUtils.createHorizontalLine(advancedGroup, 4, 0);
 
-            gd = new GridData(GridData.HORIZONTAL_ALIGN_BEGINNING);
-
             keepAliveText = UIUtils.createLabelSpinner(advancedGroup, SSHUIMessages.model_ssh_configurator_label_keep_alive, 0, 0, Integer.MAX_VALUE);
-            keepAliveText.setLayoutData(gd);
+            keepAliveText.setLayoutData(new GridData(GridData.FILL_HORIZONTAL));
             tunnelTimeout = UIUtils.createLabelSpinner(advancedGroup, SSHUIMessages.model_ssh_configurator_label_tunnel_timeout, SSHConstants.DEFAULT_CONNECT_TIMEOUT, 0, 300000);
-            tunnelTimeout.setLayoutData(gd);
+            tunnelTimeout.setLayoutData(new GridData(GridData.FILL_HORIZONTAL));
         }
 
         {
             Composite controlGroup = UIUtils.createComposite(composite, 2);
-            gd = new GridData(GridData.FILL_HORIZONTAL);
-            controlGroup.setLayoutData(gd);
+            controlGroup.setLayoutData(new GridData(GridData.FILL_HORIZONTAL));
 
             UIUtils.createDialogButton(controlGroup, SSHUIMessages.model_ssh_configurator_button_test_tunnel, new SelectionAdapter() {
                 @Override
@@ -197,7 +200,7 @@ public class SSHTunnelConfiguratorUI implements IObjectPropertyConfigurator<DBWH
                 SSHTunnelImpl tunnel = new SSHTunnelImpl();
                 DBPConnectionConfiguration connectionConfig = new DBPConnectionConfiguration();
                 connectionConfig.setHostName("localhost");
-                connectionConfig.setHostPort(configuration.getStringProperty(SSHConstants.PROP_PORT));
+                connectionConfig.setHostPort(configuration.getStringProperty(DBWHandlerConfiguration.PROP_PORT));
                 try {
                     monitor.subTask("Initialize tunnel");
                     tunnel.initializeHandler(monitor, DBWorkbench.getPlatform(), configuration, connectionConfig);
@@ -229,8 +232,8 @@ public class SSHTunnelConfiguratorUI implements IObjectPropertyConfigurator<DBWH
     @Override
     public void loadSettings(DBWHandlerConfiguration configuration)
     {
-        hostText.setText(CommonUtils.notEmpty(configuration.getStringProperty(SSHConstants.PROP_HOST)));
-        int portString = configuration.getIntProperty(SSHConstants.PROP_PORT);
+        hostText.setText(CommonUtils.notEmpty(configuration.getStringProperty(DBWHandlerConfiguration.PROP_HOST)));
+        int portString = configuration.getIntProperty(DBWHandlerConfiguration.PROP_PORT);
         if (portString != 0) {
             portText.setSelection(portString);
         } else {
@@ -302,15 +305,15 @@ public class SSHTunnelConfiguratorUI implements IObjectPropertyConfigurator<DBWH
     @Override
     public void saveSettings(DBWHandlerConfiguration configuration)
     {
-        configuration.setProperty(SSHConstants.PROP_HOST, hostText.getText());
-        configuration.setProperty(SSHConstants.PROP_PORT, portText.getSelection());
+        configuration.setProperty(DBWHandlerConfiguration.PROP_HOST, hostText.getText().trim());
+        configuration.setProperty(DBWHandlerConfiguration.PROP_PORT, portText.getSelection());
         switch (authMethodCombo.getSelectionIndex()) {
             case 0: configuration.setProperty(SSHConstants.PROP_AUTH_TYPE, SSHConstants.AuthType.PASSWORD.name()); break;
             case 1: configuration.setProperty(SSHConstants.PROP_AUTH_TYPE, SSHConstants.AuthType.PUBLIC_KEY.name()); break;
             case 2: configuration.setProperty(SSHConstants.PROP_AUTH_TYPE, SSHConstants.AuthType.AGENT.name()); break;
         }
-        configuration.setProperty(SSHConstants.PROP_KEY_PATH, privateKeyText.getText());
-        configuration.setUserName(userNameText.getText());
+        configuration.setProperty(SSHConstants.PROP_KEY_PATH, privateKeyText.getText().trim());
+        configuration.setUserName(userNameText.getText().trim());
         configuration.setPassword(passwordText.getText());
         configuration.setSavePassword(savePasswordCheckbox.getSelection());
 
@@ -322,7 +325,7 @@ public class SSHTunnelConfiguratorUI implements IObjectPropertyConfigurator<DBWH
             }
         }
 
-        configuration.setProperty(SSHConstants.PROP_LOCAL_HOST, localHostText.getText());
+        configuration.setProperty(SSHConstants.PROP_LOCAL_HOST, localHostText.getText().trim());
         int localPort = localPortSpinner.getSelection();
         if (localPort <= 0) {
             configuration.setProperty(SSHConstants.PROP_LOCAL_PORT, null);
@@ -330,7 +333,7 @@ public class SSHTunnelConfiguratorUI implements IObjectPropertyConfigurator<DBWH
             configuration.setProperty(SSHConstants.PROP_LOCAL_PORT, localPort);
         }
 
-        configuration.setProperty(SSHConstants.PROP_REMOTE_HOST, remoteHostText.getText());
+        configuration.setProperty(SSHConstants.PROP_REMOTE_HOST, remoteHostText.getText().trim());
         int remotePort = remotePortSpinner.getSelection();
         if (remotePort <= 0) {
             configuration.setProperty(SSHConstants.PROP_REMOTE_PORT, null);

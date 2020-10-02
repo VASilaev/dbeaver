@@ -204,6 +204,11 @@ public class PostgreServerCockroachDB extends PostgreServerExtensionBase {
     }
 
     @Override
+    public boolean supportsTableStatistics() {
+        return false;
+    }
+
+    @Override
     public String readTableDDL(DBRProgressMonitor monitor, PostgreTableBase table) throws DBException {
         try (JDBCSession session = DBUtils.openMetaSession(monitor, table, "Load CockroachDB table DDL")) {
             try (JDBCPreparedStatement dbStat = session.prepareStatement("SHOW CREATE TABLE " + table.getFullyQualifiedName(DBPEvaluationContext.DDL))) {
@@ -226,5 +231,14 @@ public class PostgreServerCockroachDB extends PostgreServerExtensionBase {
             throw new DBException(e, table.getDataSource());
         }
     }
-}
 
+    @Override
+    public boolean supportsSuperusers() {
+        return false;
+    }
+
+    @Override
+    public boolean supportsRolesWithCreateDBAbility() {
+        return false;
+    }
+}

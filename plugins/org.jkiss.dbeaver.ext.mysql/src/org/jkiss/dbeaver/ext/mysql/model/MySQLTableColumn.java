@@ -35,6 +35,7 @@ import org.jkiss.dbeaver.model.sql.SQLConstants;
 import org.jkiss.dbeaver.model.sql.SQLUtils;
 import org.jkiss.dbeaver.model.struct.DBSDataType;
 import org.jkiss.dbeaver.model.struct.DBSEntityAttribute;
+import org.jkiss.dbeaver.model.struct.DBSTypedObjectExt3;
 import org.jkiss.dbeaver.model.struct.rdb.DBSTableColumn;
 import org.jkiss.utils.CommonUtils;
 
@@ -45,7 +46,7 @@ import java.util.List;
 /**
  * MySQLTableColumn
  */
-public class MySQLTableColumn extends JDBCTableColumn<MySQLTableBase> implements DBSTableColumn, DBPNamedObject2, DBPOrderedObject
+public class MySQLTableColumn extends JDBCTableColumn<MySQLTableBase> implements DBSTableColumn, DBSTypedObjectExt3, DBPNamedObject2, DBPOrderedObject
 {
     private static final Log log = Log.getLog(MySQLTableColumn.class);
 
@@ -119,8 +120,8 @@ public class MySQLTableColumn extends JDBCTableColumn<MySQLTableBase> implements
     private void loadInfo(ResultSet dbResult)
         throws DBException
     {
-        setName(JDBCUtils.safeGetString(dbResult, MySQLConstants.COL_COLUMN_NAME));
-        setOrdinalPosition(JDBCUtils.safeGetInt(dbResult, MySQLConstants.COL_ORDINAL_POSITION));
+        name = JDBCUtils.safeGetString(dbResult, MySQLConstants.COL_COLUMN_NAME);
+        ordinalPosition = JDBCUtils.safeGetInt(dbResult, MySQLConstants.COL_ORDINAL_POSITION);
         String typeName = JDBCUtils.safeGetString(dbResult, MySQLConstants.COL_DATA_TYPE);
         assert typeName != null;
         String keyTypeName = JDBCUtils.safeGetString(dbResult, MySQLConstants.COL_COLUMN_KEY);
@@ -226,14 +227,10 @@ public class MySQLTableColumn extends JDBCTableColumn<MySQLTableBase> implements
         return fullTypeName;
     }
 
-    public void setFullTypeName(String fullTypeName) {
+    @Override
+    public void setFullTypeName(String fullTypeName) throws DBException {
+        super.setFullTypeName(fullTypeName);
         this.fullTypeName = fullTypeName;
-        int divPos = fullTypeName.indexOf('(');
-        if (divPos != -1) {
-            super.setTypeName(fullTypeName.substring(0, divPos).trim());
-        } else {
-            super.setTypeName(fullTypeName);
-        }
     }
 
     @Override

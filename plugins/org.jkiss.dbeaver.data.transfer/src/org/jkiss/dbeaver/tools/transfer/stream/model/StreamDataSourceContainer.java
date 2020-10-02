@@ -21,6 +21,7 @@ import org.eclipse.equinox.security.storage.ISecurePreferences;
 import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
+import org.jkiss.dbeaver.ModelPreferences;
 import org.jkiss.dbeaver.model.*;
 import org.jkiss.dbeaver.model.app.DBPDataSourceRegistry;
 import org.jkiss.dbeaver.model.app.DBPPlatform;
@@ -59,13 +60,11 @@ class StreamDataSourceContainer implements DBPDataSourceContainer {
     private File inputFile;
     private String name;
     private final DBPExclusiveResource exclusiveLock = new SimpleExclusiveLock();
-
-    StreamDataSourceContainer(File inputFile) {
-        this.inputFile = inputFile;
-    }
+    private final DBVModel virtualModel;
 
     StreamDataSourceContainer(String name) {
         this.name = name;
+        this.virtualModel = new DBVModel(this);
     }
 
     @NotNull
@@ -113,6 +112,16 @@ class StreamDataSourceContainer implements DBPDataSourceContainer {
     @Override
     public boolean isProvided() {
         return true;
+    }
+
+    @Override
+    public boolean isExternallyProvided() {
+        return false;
+    }
+
+    @Override
+    public boolean isTemplate() {
+        return false;
     }
 
     @Override
@@ -180,7 +189,7 @@ class StreamDataSourceContainer implements DBPDataSourceContainer {
 
     @Override
     public DBVModel getVirtualModel() {
-        return null;
+        return virtualModel;
     }
 
     @Override
@@ -350,12 +359,22 @@ class StreamDataSourceContainer implements DBPDataSourceContainer {
 
     @Override
     public DBDDataFormatterProfile getDataFormatterProfile() {
-        return null;
+        return DBWorkbench.getPlatform().getDataFormatterRegistry().getGlobalProfile();
     }
 
     @Override
-    public void setDataFormatterProfile(DBDDataFormatterProfile formatterProfile) {
+    public boolean isUseNativeDateTimeFormat() {
+        return ModelPreferences.getPreferences().getBoolean(ModelPreferences.RESULT_NATIVE_DATETIME_FORMAT);
+    }
 
+    @Override
+    public boolean isUseNativeNumericFormat() {
+        return ModelPreferences.getPreferences().getBoolean(ModelPreferences.RESULT_NATIVE_NUMERIC_FORMAT);
+    }
+
+    @Override
+    public boolean isUseScientificNumericFormat() {
+        return ModelPreferences.getPreferences().getBoolean(ModelPreferences.RESULT_SCIENTIFIC_NUMERIC_FORMAT);
     }
 
     @NotNull
@@ -364,4 +383,8 @@ class StreamDataSourceContainer implements DBPDataSourceContainer {
         return DefaultValueHandler.INSTANCE;
     }
 
+    @Override
+    public boolean isHidden() {
+        return true;
+    }
 }

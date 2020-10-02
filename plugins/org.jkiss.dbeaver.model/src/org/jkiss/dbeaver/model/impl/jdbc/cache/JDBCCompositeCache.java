@@ -222,8 +222,8 @@ public abstract class JDBCCompositeCache<
     {
         synchronized (objectCache) {
             this.objectCache.clear();
-            super.clearCache();
         }
+        super.clearCache();
     }
 
     @Override
@@ -277,6 +277,7 @@ public abstract class JDBCCompositeCache<
         // Load index columns
         DBPDataSource dataSource = owner.getDataSource();
         assert (dataSource != null);
+        monitor.beginTask("Load composite cache", 1);
         try (JDBCSession session = DBUtils.openMetaSession(monitor, owner, "Load composite objects")) {
 
             JDBCStatement dbStat = prepareObjectsStatement(session, owner, forParent);
@@ -333,7 +334,7 @@ public abstract class JDBCCompositeCache<
                         ObjectInfo objectInfo = objectMap.get(objectName);
                         if (objectInfo == null) {
                             OBJECT object = fetchObject(session, owner, parent, objectName, dbResult);
-                            if (object == null) {
+                            if (object == null || !isValidObject(monitor, owner, object)) {
                                 // Can't fetch object
                                 continue;
                             }
@@ -370,6 +371,9 @@ public abstract class JDBCCompositeCache<
             } else {
                 throw new DBException(ex, dataSource);
             }
+        }
+        finally {
+            monitor.done();
         }
 
         if (monitor.isCanceled()) {

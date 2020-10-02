@@ -26,7 +26,9 @@ import org.eclipse.jface.viewers.ISelectionProvider;
 import org.eclipse.jface.viewers.StructuredSelection;
 import org.eclipse.osgi.util.NLS;
 import org.eclipse.swt.SWT;
+import org.eclipse.swt.custom.CTabFolder;
 import org.eclipse.swt.events.*;
+import org.eclipse.swt.graphics.Image;
 import org.eclipse.swt.graphics.Point;
 import org.eclipse.swt.graphics.Rectangle;
 import org.eclipse.swt.layout.FillLayout;
@@ -51,12 +53,13 @@ import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.runtime.ProxyProgressMonitor;
 import org.jkiss.dbeaver.model.runtime.VoidProgressMonitor;
 import org.jkiss.dbeaver.model.sql.SQLUtils;
-import org.jkiss.dbeaver.model.struct.DBSEntity;
 import org.jkiss.dbeaver.model.struct.DBSObject;
 import org.jkiss.dbeaver.model.struct.DBSObjectContainer;
+import org.jkiss.dbeaver.model.struct.rdb.DBSTable;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.runtime.ui.UIServiceSQL;
 import org.jkiss.dbeaver.ui.*;
+import org.jkiss.dbeaver.ui.actions.datasource.DataSourceToolbarUtils;
 import org.jkiss.dbeaver.ui.controls.ProgressPageControl;
 import org.jkiss.dbeaver.ui.controls.PropertyPageStandard;
 import org.jkiss.dbeaver.ui.controls.folders.ITabbedFolder;
@@ -529,8 +532,10 @@ public class EntityEditor extends MultiPageDatabaseEditor
             try {
                 addPage(new ProgressEditorPart(this), editorInput);
                 setPageText(0, "Initializing ...");
-                setPageImage(0, DBeaverIcons.getImage(UIIcon.REFRESH));
+                Image tabImage = DBeaverIcons.getImage(UIIcon.REFRESH);
+                setPageImage(0, tabImage);
                 setActivePage(0);
+                ((CTabFolder)getContainer()).setTabHeight(tabImage.getBounds().height + 2);
             } catch (PartInitException e) {
                 log.error(e);
             }
@@ -877,7 +882,7 @@ public class EntityEditor extends MultiPageDatabaseEditor
             // Lists and commands should be refreshed only if we make real refresh from remote storage
             // Otherwise just update object's properties
             DBECommandContext commandContext = getCommandContext();
-            if (commandContext != null) {
+            if (commandContext != null && commandContext.isDirty()) {
                 // Just clear command context. Do not undo because object state was already refreshed
                 commandContext.resetChanges(true);
             }
@@ -1018,6 +1023,7 @@ public class EntityEditor extends MultiPageDatabaseEditor
     public void recreateEditorControl() {
         recreatePages();
         firePropertyChange(PROP_OBJECT_INIT);
+        DataSourceToolbarUtils.refreshSelectorToolbar(getSite().getWorkbenchWindow());
     }
 
     private static final int MAX_BREADCRUMBS_MENU_ITEM = 300;
@@ -1182,8 +1188,8 @@ public class EntityEditor extends MultiPageDatabaseEditor
     @Override
     public boolean isEntityContainer(DBSObjectContainer object) {
         try {
-            Class<? extends DBSObject> childType = object.getChildType(new VoidProgressMonitor());
-            return childType != null && DBSEntity.class.isAssignableFrom(childType);
+            Class<? extends DBSObject> childType = object.getPrimaryChildType(new VoidProgressMonitor());
+            return childType != null && DBSTable.class.isAssignableFrom(childType);
         } catch (DBException e) {
             log.error(e);
             return false;
@@ -1192,7 +1198,13 @@ public class EntityEditor extends MultiPageDatabaseEditor
 
     @Override
     public boolean isRelationalObject(DBSObject object) {
-        return true;
+        DBPDataSource dataSource = object.getDataSource();
+        return dataSource != null && dataSource.getInfo().supportsReferentialIntegrity();
     }
 
+    @Override
+    public String toString() {
+        DBSObject databaseObject = getDatabaseObject();
+        return databaseObject == null ? super.toString() : DBUtils.getObjectFullName(databaseObject, DBPEvaluationContext.UI);
+    }
 }

@@ -17,6 +17,7 @@
 package org.jkiss.dbeaver.ui.controls.resultset.panel.references;
 
 import org.eclipse.jface.action.IContributionManager;
+import org.jkiss.code.NotNull;
 import org.jkiss.dbeaver.ui.controls.resultset.QueryResultsDecorator;
 
 /**
@@ -32,11 +33,11 @@ public class ReferencesResultsDecorator extends QueryResultsDecorator {
 
     @Override
     public long getDecoratorFeatures() {
-        return FEATURE_NONE;
+        return FEATURE_LINKS | FEATURE_PRESENTATIONS;
     }
 
     @Override
-    public void fillContributions(IContributionManager contributionManager) {
+    public void fillContributions(@NotNull IContributionManager contributionManager) {
 //        contributionManager.add(new ReferencesPanel.EditColumnsAction(container));
 //        contributionManager.add(new ReferencesPanel.DeleteColumnAction(container));
 //        contributionManager.add(new ReferencesPanel.ClearGroupingAction(container));

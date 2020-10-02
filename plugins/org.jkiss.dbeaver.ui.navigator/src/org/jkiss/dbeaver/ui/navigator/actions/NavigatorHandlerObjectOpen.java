@@ -39,7 +39,6 @@ import org.jkiss.dbeaver.model.DBUtils;
 import org.jkiss.dbeaver.model.edit.DBEObjectEditor;
 import org.jkiss.dbeaver.model.navigator.*;
 import org.jkiss.dbeaver.model.struct.DBSObject;
-import org.jkiss.dbeaver.model.struct.DBSObjectContainer;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.runtime.ui.UIServiceConnections;
 import org.jkiss.dbeaver.runtime.ui.UIServiceSQL;
@@ -202,11 +201,7 @@ public class NavigatorHandlerObjectOpen extends NavigatorHandlerObjectBase imple
                     } else {
                         DatabaseNodeEditorInput editorInput = new DatabaseNodeEditorInput(dnNode);
                         if (DBWorkbench.getPlatform().getPreferenceStore().getBoolean(NavigatorPreferences.NAVIGATOR_REFRESH_EDITORS_ON_OPEN)) {
-                            if (databaseObject instanceof DBSObjectContainer) {
-                                // do not auto-refresh object containers (too expensive)
-                            } else {
-                                refreshDatabaseNode(dnNode);
-                            }
+                            refreshDatabaseNode(dnNode);
                         }
                         setInputAttributes(editorInput, defaultPageId, defaultFolderId, attributes);
                         return workbenchWindow.getActivePage().openEditor(
@@ -275,7 +270,7 @@ public class NavigatorHandlerObjectOpen extends NavigatorHandlerObjectBase imple
     public static void openConnectionEditor(IWorkbenchWindow workbenchWindow, DBPDataSourceContainer dataSourceContainer) {
         UIServiceConnections serviceConnections = DBWorkbench.getService(UIServiceConnections.class);
         if (serviceConnections != null) {
-            serviceConnections.openConnectionEditor(dataSourceContainer);
+            serviceConnections.openConnectionEditor(dataSourceContainer, null);
         }
     }
 

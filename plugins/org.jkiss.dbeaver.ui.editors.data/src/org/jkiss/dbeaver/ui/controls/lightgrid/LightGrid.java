@@ -371,6 +371,9 @@ public abstract class LightGrid extends Canvas {
             | SWT.SINGLE | SWT.MULTI | SWT.NO_FOCUS | SWT.CHECK | SWT.VIRTUAL;
         int newStyle = style & mask;
         newStyle |= SWT.DOUBLE_BUFFERED;
+        // ? do we need it? It may improve performance a bit (as drawBackgraound is relatively slow.
+        // https://www.eclipse.org/forums/index.php/t/146489/
+        // | SWT.NO_BACKGROUND;
         return newStyle;
     }
 
@@ -417,14 +420,14 @@ public abstract class LightGrid extends Canvas {
 
         if (getVerticalBar() != null) {
             getVerticalBar().setVisible(false);
-            vScroll = new ScrollBarAdapter(getVerticalBar());
+            vScroll = new ScrollBarAdapter(getVerticalBar(), true);
         } else {
             vScroll = new NullScrollBar();
         }
 
         if (getHorizontalBar() != null) {
             getHorizontalBar().setVisible(false);
-            hScroll = new ScrollBarAdapter(getHorizontalBar());
+            hScroll = new ScrollBarAdapter(getHorizontalBar(), false);
         } else {
             hScroll = new NullScrollBar();
         }
@@ -528,11 +531,15 @@ public abstract class LightGrid extends Canvas {
                 createChildColumns(column);
             }
             // Invalidate columns structure
-            boolean hasChildColumns = false;
+            boolean hasChildColumns = false, hasPinnedColumns = false;
             for (Iterator<GridColumn> iter = columns.iterator(); iter.hasNext(); ) {
                 GridColumn column = iter.next();
                 if (column.getParent() == null) {
                     topColumns.add(column);
+                    column.setPinIndex(contentProvider.getColumnPinIndex(column.getElement()));
+                    if (column.isPinned()) {
+                        hasPinnedColumns = true;
+                    }
                 } else {
                     hasChildColumns = true;
                 }
@@ -540,7 +547,16 @@ public abstract class LightGrid extends Canvas {
                     iter.remove();
                 }
             }
-            if (hasChildColumns) {
+
+            if (hasPinnedColumns) {
+                // Order respecting pinned state
+                Comparator<GridColumn> pinnedComparator = (o1, o2) -> o1.isPinned() == o2.isPinned() ?
+                    (o1.getPinIndex() - o2.getPinIndex()) : (o1.isPinned() ? -1 : 1);
+                columns.sort(pinnedComparator);
+                topColumns.sort(pinnedComparator);
+            }
+
+            if (hasChildColumns || hasPinnedColumns) {
                 // Rebuild columns model
                 columnElements = new Object[columns.size()];
                 for (int i = 0; i < columns.size(); i++) {
@@ -574,7 +590,7 @@ public abstract class LightGrid extends Canvas {
                         int normalWidth = 0;
                         List<GridColumn> fatColumns = new ArrayList<>();
                         for (GridColumn curColumn : columns) {
-                            if (curColumn.getWidth() > maxColumnDefWidth) {
+                            if (CommonUtils.isEmpty(curColumn.getChildren()) && curColumn.getWidth() > maxColumnDefWidth) {
                                 fatColumns.add(curColumn);
                             } else {
                                 normalWidth += curColumn.getWidth();
@@ -695,6 +711,12 @@ public abstract class LightGrid extends Canvas {
 
     public Object getColumnElement(int col) {
         return columnElements[col];
+    }
+
+    public int getColumnIndex(int x, int y) {
+        Point dragPoint = getDisplay().map(null, LightGrid.this, new Point(x, y));
+        GridColumn column = getColumn(dragPoint);
+        return column == null ? -1 : column.getIndex();
     }
 
     public Rectangle getColumnBounds(int col) {
@@ -846,8 +868,6 @@ public abstract class LightGrid extends Canvas {
             return null;
         }
 
-        GridColumn overThis = null;
-
         int x2 = 0;
 
         if (rowHeaderVisible) {
@@ -858,9 +878,24 @@ public abstract class LightGrid extends Canvas {
             x2 += rowHeaderWidth;
         }
 
+        int pinnedColumnsWidth = getPinnedColumnsWidth();
+        if (pinnedColumnsWidth > 0 && point.x <= pinnedColumnsWidth + rowHeaderWidth) {
+            return getColumnWithOffset(point, x2, true);
+        }
+
+        x2 += pinnedColumnsWidth;
         x2 -= getHScrollSelectionInPixels();
 
+        return getColumnWithOffset(point, x2, false);
+    }
+
+    @Nullable
+    private GridColumn getColumnWithOffset(Point point, int x2, boolean pinned) {
+        GridColumn overThis = null;
         for (GridColumn column : columns) {
+            if (column.isPinned() != pinned) {
+                continue;
+            }
             if (point.x >= x2 && point.x < x2 + column.getWidth()) {
                 for (GridColumn parent = column.getParent(); parent != null; parent = parent.getParent()) {
                     Point parentLoc = getOrigin(parent, -1);
@@ -874,10 +909,6 @@ public abstract class LightGrid extends Canvas {
             }
 
             x2 += column.getWidth();
-        }
-
-        if (overThis == null) {
-            return null;
         }
 
         return overThis;
@@ -1178,10 +1209,11 @@ public abstract class LightGrid extends Canvas {
         } else if (getVisibleGridHeight() < 1) {
             bottomIndex = getTopIndex();
         } else {
-            RowRange range = getRowRange(getTopIndex(), getVisibleGridHeight(), false, false);
+            int visibleGridHeight = getVisibleGridHeight();
+            RowRange range = getRowRange(getTopIndex(), visibleGridHeight, false, false);
 
             bottomIndex = range.endIndex;
-            bottomIndexShownCompletely = range.height <= getVisibleGridHeight();
+            bottomIndexShownCompletely = range.height <= visibleGridHeight;
         }
 
         return bottomIndex;
@@ -1327,7 +1359,12 @@ public abstract class LightGrid extends Canvas {
      */
     private int getVisibleGridHeight()
     {
-        return getClientArea().height - (columnHeadersVisible ? headerHeight : 0);
+        Rectangle clientArea = getClientArea();
+        return getVisibleGridHeight(clientArea);
+    }
+
+    private int getVisibleGridHeight(Rectangle clientArea) {
+        return clientArea.height - (columnHeadersVisible ? headerHeight : 0);
     }
 
     /**
@@ -1707,6 +1744,12 @@ public abstract class LightGrid extends Canvas {
         if (rowHeaderVisible) {
             firstVisibleX = rowHeaderWidth;
         }
+        int pinnedColumnsWidth = getPinnedColumnsWidth();
+        if (pinnedColumnsWidth > 0) {
+            if (!col.isPinned()) {
+                firstVisibleX += pinnedColumnsWidth;
+            }
+        }
 
         // if its visible just return
         final Rectangle clientArea = getClientArea();
@@ -1786,14 +1829,22 @@ public abstract class LightGrid extends Canvas {
      *
      * @param item the item to be shown
      */
-    public void showItem(int item)
-    {
+    public void showItem(int item) {
+        showItem(item, -1);
+    }
+
+    public void showItem(int item, int topOffset) {
         checkWidget();
 
         updateScrollbars();
 
         // if no items are visible on screen then abort
         if (getVisibleGridHeight() < 1) {
+            return;
+        }
+
+        if (topOffset >= 0) {
+            setTopIndex(Math.max(0, item - topOffset));
             return;
         }
 
@@ -2139,6 +2190,18 @@ public abstract class LightGrid extends Canvas {
         }
     }
 
+    private int getPinnedColumnsWidth() {
+        int x = 0;
+        for (int k = 0; k < columns.size(); k++) {
+            if (columns.get(k).isPinned()) {
+                x += columns.get(k).getWidth();
+            } else {
+                break;
+            }
+        }
+        return x;
+    }
+
     /**
      * Paints.
      *
@@ -2165,13 +2228,14 @@ public abstract class LightGrid extends Canvas {
 
         final Rectangle clientArea = getClientArea();
         int availableHeight = clientArea.height - y;
-        int visibleRows = availableHeight / getItemHeight() + 1;
+        int itemHeight = getItemHeight();
+        int visibleRows = availableHeight / itemHeight + 1;
         if (getItemCount() > 0 && availableHeight > 0) {
             RowRange range = getRowRange(getTopIndex(), availableHeight, false, false);
             if (range.height >= availableHeight)
                 visibleRows = range.rows;
             else
-                visibleRows = range.rows + (availableHeight - range.height) / getItemHeight() + 1;
+                visibleRows = range.rows + (availableHeight - range.height) / itemHeight + 1;
         }
 
         int firstVisibleIndex = getTopIndex();
@@ -2180,6 +2244,7 @@ public abstract class LightGrid extends Canvas {
         final int hScrollSelectionInPixels = getHScrollSelectionInPixels();
         final GridPos testPos = new GridPos(-1, -1);
         final Rectangle cellBounds = new Rectangle(0, 0, 0, 0);
+        int pinnedColumnsWidth = getPinnedColumnsWidth();
 
         for (int i = 0; i < visibleRows; i++) {
 
@@ -2193,14 +2258,17 @@ public abstract class LightGrid extends Canvas {
                 boolean cellInRowSelected = selectedRows.containsKey(row);
 
                 if (rowHeaderVisible) {
-
                     // row header is actually painted later
-                    x += rowHeaderWidth;
+                    x += rowHeaderWidth - 1;
                 }
+                x += pinnedColumnsWidth;
 
                 // draw regular cells for each column
                 for (int k = 0, columnsSize = columns.size(); k < columnsSize; k++) {
                     GridColumn column = columns.get(k);
+                    if (column.isPinned()) {
+                        continue;
+                    }
 
                     int width = column.getWidth();
 
@@ -2209,7 +2277,7 @@ public abstract class LightGrid extends Canvas {
                         cellBounds.x = x;
                         cellBounds.y = y;
                         cellBounds.width = width;
-                        cellBounds.height = getItemHeight();
+                        cellBounds.height = itemHeight;
 
                         testPos.col = k;
                         testPos.row = row;
@@ -2224,11 +2292,11 @@ public abstract class LightGrid extends Canvas {
                         //gc.setClipping((Rectangle) null);
                     }
 
-                    x += column.getWidth();
+                    x += width;
                 }
 
                 if (x < clientArea.width) {
-                    drawEmptyCell(gc, x, y, clientArea.width - x + 1, getItemHeight());
+                    drawEmptyCell(gc, x, y, clientArea.width - x + 1, itemHeight);
                 }
 
                 x = 0;
@@ -2241,7 +2309,7 @@ public abstract class LightGrid extends Canvas {
                         cellBounds.x = 0;
                         cellBounds.y = y;
                         cellBounds.width = rowHeaderWidth;
-                        cellBounds.height = getItemHeight() + 1;
+                        cellBounds.height = itemHeight + 1;
 
                         gc.setClipping(cellBounds);
                         try {
@@ -2258,8 +2326,40 @@ public abstract class LightGrid extends Canvas {
                     }
                     x += rowHeaderWidth;
                 }
+                {
+                    // paint pinned columns
+                    for (int k = 0; k < columns.size(); k++) {
+                        GridColumn pc = columns.get(k);
+                        if (!pc.isPinned()) {
+                            break;
+                        }
+                        int width = pc.getWidth();
+                        cellBounds.x = x;
+                        cellBounds.y = y;
+                        cellBounds.width = width;
+                        cellBounds.height = itemHeight;
 
-                y += getItemHeight() + 1;
+                        testPos.col = k;
+                        testPos.row = row;
+                        cellBounds.height++;
+                        gc.setClipping(cellBounds);
+                        cellBounds.height--;
+                        try {
+                            cellRenderer.paint(
+                                gc,
+                                cellBounds,
+                                selectedCells.contains(testPos),
+                                focusItem == row && focusColumn == pc,
+                                pc.getElement(),
+                                rowElements[row]);
+                        } finally {
+                            gc.setClipping((Rectangle)null);
+                        }
+                        x += width;
+                    }
+                }
+
+                y += itemHeight + 1;
 
             } else {
 
@@ -2267,26 +2367,94 @@ public abstract class LightGrid extends Canvas {
                     //row header is actually painted later
                     x += rowHeaderWidth;
                 }
+                x += pinnedColumnsWidth;
 
                 for (GridColumn column : columns) {
-                    drawEmptyCell(gc, x, y, column.getWidth(), getItemHeight());
+                    if (column.isPinned()) continue;
+                    drawEmptyCell(gc, x, y, column.getWidth(), itemHeight);
                     x += column.getWidth();
                 }
                 if (x < clientArea.width) {
-                    drawEmptyCell(gc, x, y, clientArea.width - x + 1, getItemHeight());
+                    drawEmptyCell(gc, x, y, clientArea.width - x + 1, itemHeight);
                 }
 
                 x = 0;
 
                 if (rowHeaderVisible) {
-                    drawEmptyRowHeader(gc, x, y, rowHeaderWidth, getItemHeight() + 1);
+                    drawEmptyRowHeader(gc, x, y, rowHeaderWidth, itemHeight + 1);
                     x += rowHeaderWidth;
                 }
+                for (GridColumn column : columns) {
+                    if (!column.isPinned()) break;
+                    drawEmptyCell(gc, x, y, column.getWidth(), itemHeight);
+                    x += column.getWidth();
+                }
 
-                y += getItemHeight() + 1;
+                y += itemHeight + 1;
             }
 
             row++;
+        }
+
+        // Draw lines in the end. Do not paint lines to grid cell to optimize performance
+        if (this.isLinesVisible()) {
+//            if (selected) {
+//                gc.setForeground(grid.getLineSelectedColor());
+//            } else {
+//                gc.setForeground(grid.getLineColor());
+//            }
+            gc.setForeground(this.getLineColor());
+
+            int startY = 0;
+            int startX = 0;
+            int width = clientArea.width;
+            int height = clientArea.height;
+            if (rowHeaderVisible) {
+                // row header is actually painted later
+                startX += rowHeaderWidth - 1;
+                width -= rowHeaderWidth;
+            }
+            if (columnHeadersVisible) {
+                startY += headerHeight - 1;
+                height -= headerHeight;
+            }
+            //startX -= hScrollSelectionInPixels;
+            //width += hScrollSelectionInPixels;
+
+            // Draw horizontal lines
+            y = startY;
+            for (int i = 0; i < visibleRows; i++) {
+                y += itemHeight + 1;
+                gc.drawLine(startX, y, startX + width, y);
+            }
+
+            // Vertical lines
+            int leftSpan = getPinnedColumnsWidth();
+            if (rowHeaderVisible) {
+                leftSpan += rowHeaderWidth;
+            }
+            int x = startX;
+            x -= hScrollSelectionInPixels;
+
+            for (int k = 0, columnsSize = columns.size(); k < columnsSize; k++) {
+                x += columns.get(k).getWidth();
+                if (x < leftSpan) {
+                    continue;
+                }
+                gc.drawLine(
+                    x,
+                    startY,
+                    x,
+                    startY + height);
+            }
+        }
+
+
+        if (pinnedColumnsWidth > 0) {
+            // draw pin divider
+            gc.setForeground(this.getLineSelectedColor());
+            gc.drawLine(rowHeaderWidth + pinnedColumnsWidth - 1, 0, rowHeaderWidth + pinnedColumnsWidth - 1, y);
+            gc.drawLine(rowHeaderWidth + pinnedColumnsWidth, 0, rowHeaderWidth + pinnedColumnsWidth, y);
         }
     }
 
@@ -2306,18 +2474,18 @@ public abstract class LightGrid extends Canvas {
             // skip left corner
             x += rowHeaderWidth;
         }
+        x += getPinnedColumnsWidth();
 
         final Rectangle clientArea = getClientArea();
         for (int i = 0, columnsSize = topColumns.size(); i < columnsSize; i++) {
             GridColumn column = topColumns.get(i);
+            if (column.isPinned()) {
+                continue;
+            }
             if (x > clientArea.width)
                 break;
 
-            int columnHeight = column.getHeaderHeight(false, false);
-            y = 0;
-            if (x + column.getWidth() >= 0) {
-                paintColumnsHeader(gc, column, x, y, columnHeight, 0);
-            }
+            y = paintColumnHeader(gc, x, column);
 
             x += column.getWidth();
         }
@@ -2333,6 +2501,24 @@ public abstract class LightGrid extends Canvas {
             drawTopLeftCell(gc, 0, 0, rowHeaderWidth, headerHeight);
             x += rowHeaderWidth;
         }
+        for (GridColumn column : topColumns) {
+            if (column.isPinned()) {
+                paintColumnHeader(gc, x, column);
+                x += column.getWidth();
+            } else {
+                break;
+            }
+        }
+    }
+
+    private int paintColumnHeader(@NotNull GC gc, int x, GridColumn column) {
+        int y;
+        int columnHeight = column.getHeaderHeight(false, false);
+        y = 0;
+        if (x + column.getWidth() >= 0) {
+            paintColumnsHeader(gc, column, x, y, columnHeight, 0);
+        }
+        return y;
     }
 
     private void paintColumnsHeader(GC gc, @NotNull GridColumn column, int x, int y, int columnHeight, int level) {
@@ -2403,8 +2589,8 @@ public abstract class LightGrid extends Canvas {
 
         // if the scrollbar is visible set its values
         if (vScroll.getVisible()) {
-            int max = getItemCount();
-            int thumb = (getVisibleGridHeight() + 1) / (getItemHeight() + 1);
+            int max = getItemCount() + 1;
+            int thumb = (getVisibleGridHeight(clientArea) + 1) / (getItemHeight() + 1);
 
             // if possible, remember selection, if selection is too large, just
             // make it the max you can
@@ -2419,15 +2605,21 @@ public abstract class LightGrid extends Canvas {
             if (!columnScrolling) {
                 // horizontal scrolling works pixel by pixel
 
-                int hiddenArea = preferredSize.x - clientArea.width + 1;
+                int hiddenArea = preferredSize.x - clientArea.width + 1 + (vScroll.getVisible() ? vScroll.getWidth() : 0);
 
-                // if possible, remember selection, if selection is too large,
+                // if possi
+                // ble, remember selection, if selection is too large,
                 // just
                 // make it the max you can
                 int selection = Math.min(hScroll.getSelection(), hiddenArea - 1);
 
-                hScroll.setValues(selection, 0, hiddenArea + clientArea.width - 1, clientArea.width,
-                                  HORZ_SCROLL_INCREMENT, clientArea.width);
+                hScroll.setValues(
+                    selection,
+                    0,
+                    hiddenArea + clientArea.width - 1,
+                    clientArea.width,
+                    HORZ_SCROLL_INCREMENT,
+                    clientArea.width);
             } else {
                 // horizontal scrolling is column by column
 
@@ -2770,7 +2962,8 @@ public abstract class LightGrid extends Canvas {
 
         // Special code to reflect mouse wheel events if using an external
         // scroller
-        addListener(SWT.MouseWheel, this::onMouseWheel);
+        addListener(SWT.MouseWheel, this::onMouseVerticalWheel);
+        addListener(SWT.MouseHorizontalWheel, this::onMouseHorizontalWheel);
     }
 
     private void onFocusIn() {
@@ -2801,16 +2994,25 @@ public abstract class LightGrid extends Canvas {
      *
      * @param e event
      */
-    private void onMouseWheel(Event e)
+    private void onMouseVerticalWheel(Event e)
     {
         if (vScroll.getVisible()) {
             vScroll.handleMouseWheel(e);
             if (getVerticalBar() == null)
                 e.doit = false;
-        } else if (hScroll.getVisible()) {
-            hScroll.handleMouseWheel(e);
-            if (getHorizontalBar() == null)
-                e.doit = false;
+        } else {
+            if (hScroll.getVisible()) {
+                hScroll.handleMouseWheel(e);
+                if (getHorizontalBar() == null)
+                    e.doit = false;
+            }
+        }
+    }
+
+    private void onMouseHorizontalWheel(Event e) {
+        if (hScroll.getVisible()) {
+            scrollHorizontally(e.count);
+            e.doit = false;
         }
     }
 
@@ -2869,7 +3071,7 @@ public abstract class LightGrid extends Canvas {
         if (isListening(SWT.DragDetect)) {
 
             if (hoveringOnHeaderDragArea && hoveringColumn != null) {
-                if (e.button == 1 && (hoveringColumn.isOverIcon(e.x, e.y) || selectedColumns.contains(hoveringColumn))) {
+                if (e.button == 1/* && (hoveringColumn.isOverIcon(e.x, e.y) || selectedColumns.contains(hoveringColumn))*/) {
                     if (dragDetect(e)) {
                         // Drag and drop started
                         headerColumnDragStarted = true;
@@ -3870,7 +4072,6 @@ public abstract class LightGrid extends Canvas {
      */
     void newColumn(GridColumn column, int index)
     {
-
         if (index == -1) {
             columns.add(column);
         } else {
@@ -4129,6 +4330,10 @@ public abstract class LightGrid extends Canvas {
 
     public int getColumnSelectionSize() {
         return selectedColumns.size();
+    }
+
+    public boolean isRowSelected(int row) {
+        return selectedRows.containsKey(row);
     }
 
     /**
@@ -4426,19 +4631,6 @@ public abstract class LightGrid extends Canvas {
         gc.setForeground(foreground);
 
         gc.fillRectangle(x, y, width + 1, height);
-
-        if (isLinesVisible()) {
-            gc.setForeground(getLineColor());
-            gc.drawLine(
-                x,
-                y + height,
-                x + width,
-                y + height);
-            gc.drawLine(x + width - 1,
-                y,
-                x + width - 1,
-                y + height);
-        }
     }
 
     private void drawTopLeftCell(GC gc, int x, int y, int width, int height) {
@@ -4661,7 +4853,7 @@ public abstract class LightGrid extends Canvas {
                     return false;
                 }
                 GridColumn overColumn = getOverColumn(event);
-                return overColumn != null && draggingColumn != overColumn;
+                return overColumn != null && draggingColumn != overColumn && draggingColumn.isPinned() == overColumn.isPinned();
             }
 
             private GridColumn getOverColumn(DropTargetEvent event) {

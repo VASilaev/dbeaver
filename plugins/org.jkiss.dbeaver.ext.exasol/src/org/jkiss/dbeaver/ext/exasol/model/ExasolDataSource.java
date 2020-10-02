@@ -30,19 +30,7 @@ import org.jkiss.dbeaver.ext.exasol.ExasolSysTablePrefix;
 import org.jkiss.dbeaver.ext.exasol.model.app.ExasolServerSessionManager;
 import org.jkiss.dbeaver.ext.exasol.model.cache.ExasolDataTypeCache;
 import org.jkiss.dbeaver.ext.exasol.model.plan.ExasolPlanAnalyser;
-import org.jkiss.dbeaver.ext.exasol.model.security.ExasolBaseObjectGrant;
-import org.jkiss.dbeaver.ext.exasol.model.security.ExasolConnectionGrant;
-import org.jkiss.dbeaver.ext.exasol.model.security.ExasolGrantee;
-import org.jkiss.dbeaver.ext.exasol.model.security.ExasolRole;
-import org.jkiss.dbeaver.ext.exasol.model.security.ExasolRoleGrant;
-import org.jkiss.dbeaver.ext.exasol.model.security.ExasolSchemaGrant;
-import org.jkiss.dbeaver.ext.exasol.model.security.ExasolScriptGrant;
-import org.jkiss.dbeaver.ext.exasol.model.security.ExasolSecurityPolicy;
-import org.jkiss.dbeaver.ext.exasol.model.security.ExasolSystemGrant;
-import org.jkiss.dbeaver.ext.exasol.model.security.ExasolTableGrant;
-import org.jkiss.dbeaver.ext.exasol.model.security.ExasolTableObjectType;
-import org.jkiss.dbeaver.ext.exasol.model.security.ExasolUser;
-import org.jkiss.dbeaver.ext.exasol.model.security.ExasolViewGrant;
+import org.jkiss.dbeaver.ext.exasol.model.security.*;
 import org.jkiss.dbeaver.model.DBPDataSourceContainer;
 import org.jkiss.dbeaver.model.DBPDataSourceInfo;
 import org.jkiss.dbeaver.model.DBPErrorAssistant;
@@ -50,16 +38,13 @@ import org.jkiss.dbeaver.model.DBUtils;
 import org.jkiss.dbeaver.model.admin.sessions.DBAServerSessionManager;
 import org.jkiss.dbeaver.model.connection.DBPConnectionConfiguration;
 import org.jkiss.dbeaver.model.connection.DBPDriver;
-import org.jkiss.dbeaver.model.exec.DBCException;
-import org.jkiss.dbeaver.model.exec.DBCExecutionContext;
-import org.jkiss.dbeaver.model.exec.DBCQueryTransformType;
-import org.jkiss.dbeaver.model.exec.DBCQueryTransformer;
-import org.jkiss.dbeaver.model.exec.DBCSession;
+import org.jkiss.dbeaver.model.exec.*;
 import org.jkiss.dbeaver.model.exec.jdbc.JDBCDatabaseMetaData;
 import org.jkiss.dbeaver.model.exec.jdbc.JDBCSession;
 import org.jkiss.dbeaver.model.exec.plan.DBCPlan;
 import org.jkiss.dbeaver.model.exec.plan.DBCPlanStyle;
 import org.jkiss.dbeaver.model.exec.plan.DBCQueryPlanner;
+import org.jkiss.dbeaver.model.exec.plan.DBCQueryPlannerConfiguration;
 import org.jkiss.dbeaver.model.impl.jdbc.JDBCDataSource;
 import org.jkiss.dbeaver.model.impl.jdbc.JDBCExecutionContext;
 import org.jkiss.dbeaver.model.impl.jdbc.JDBCRemoteInstance;
@@ -353,12 +338,7 @@ public class ExasolDataSource extends JDBCDataSource implements DBCQueryPlanner,
     	if (addMetaProps == null)
     		addMetaProps = new Properties();
     	
-    	if (JDBCExecutionContext.TYPE_METADATA.equals(purpose)) {
-    		addMetaProps.clear();
-    		addMetaProps.put("snapshottransactions", "1");
-    	} else {
-    		addMetaProps.clear();
-    	}
+		addMetaProps.clear();
     	
     	return props;
     	
@@ -429,13 +409,6 @@ public class ExasolDataSource extends JDBCDataSource implements DBCQueryPlanner,
 	// Connection related Info
 	// -----------------------
 
-	@Override
-	protected String getConnectionUserName(
-			@NotNull DBPConnectionConfiguration connectionInfo)
-	{
-		return connectionInfo.getUserName();
-	}
-
 	@NotNull
 	@Override
 	public ExasolDataSource getDataSource()
@@ -501,8 +474,9 @@ public class ExasolDataSource extends JDBCDataSource implements DBCQueryPlanner,
 	// Manage Children: ExasolSchema
 	// --------------------------
 
-	@Override
-	public Class<? extends ExasolSchema> getChildType(@NotNull DBRProgressMonitor monitor) throws DBException
+	@NotNull
+    @Override
+	public Class<? extends ExasolSchema> getPrimaryChildType(@NotNull DBRProgressMonitor monitor) throws DBException
 	{
 		return ExasolSchema.class;
 	}
@@ -789,6 +763,11 @@ public class ExasolDataSource extends JDBCDataSource implements DBCQueryPlanner,
 		return this.exasolCurrentUserPrivileges.getatLeastV5();
 	}
 	
+	public boolean ishasPartitionColumns()
+	{
+		return this.exasolCurrentUserPrivileges.hasPartitionColumns();
+	}
+	
 	public boolean ishasConsumerGroups()
 	{
 		return this.exasolCurrentUserPrivileges.hasConsumerGroups();
@@ -925,7 +904,7 @@ public class ExasolDataSource extends JDBCDataSource implements DBCQueryPlanner,
 
 	@NotNull
 	@Override
-	public DBCPlan planQueryExecution(@NotNull DBCSession session, @NotNull String query)
+	public DBCPlan planQueryExecution(@NotNull DBCSession session, @NotNull String query, @NotNull DBCQueryPlannerConfiguration configuration)
 			throws DBCException
 	{
 		ExasolPlanAnalyser plan = new ExasolPlanAnalyser(this, query);
@@ -961,6 +940,23 @@ public class ExasolDataSource extends JDBCDataSource implements DBCQueryPlanner,
             return new QueryTransformerFetchAll();
         }
         return super.createQueryTransformer(type);
+    }
+    
+    @Override
+    public ErrorType discoverErrorType(@NotNull Throwable error) {
+    	// exasol has no sqlstates 
+    	String errorMessage = error.getMessage();
+    	if (errorMessage.contains("Connection lost") | errorMessage.contains("Connection was killed") | errorMessage.contains("Process does not exist") | errorMessage.contains("Successfully reconnected") | errorMessage.contains("Statement handle not found")  )
+    	{
+    		return ErrorType.CONNECTION_LOST;
+    	} else if (errorMessage.contains("Feature not supported")) {
+			return ErrorType.FEATURE_UNSUPPORTED;
+		} else if (errorMessage.contains("GlobalTransactionRollback")) {
+			return ErrorType.TRANSACTION_ABORTED;
+		} else if (errorMessage.contains("insufficient privileges")) {
+			return ErrorType.PERMISSION_DENIED;
+		}
+    	return super.discoverErrorType(error);
     }
 
 

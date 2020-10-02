@@ -36,6 +36,7 @@ import org.jkiss.dbeaver.model.meta.Property;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.struct.DBSDataType;
 import org.jkiss.dbeaver.model.struct.DBSTypedObjectEx;
+import org.jkiss.dbeaver.model.struct.DBSTypedObjectExt4;
 import org.jkiss.dbeaver.model.struct.rdb.DBSTableColumn;
 import org.jkiss.utils.CommonUtils;
 
@@ -47,7 +48,7 @@ import java.sql.ResultSet;
  * @author Denis Forveille
  */
 public class DB2TableColumn extends JDBCTableColumn<DB2TableBase>
-    implements DBSTableColumn, DBSTypedObjectEx, DBPHiddenObject {
+    implements DBSTableColumn, DBSTypedObjectEx, DBPHiddenObject, DBSTypedObjectExt4<DB2DataType> {
 
     private DB2DataType dataType;
     private DB2Schema dataTypeSchema;
@@ -62,7 +63,8 @@ public class DB2TableColumn extends JDBCTableColumn<DB2TableBase>
     private String rowEnd;
     private String transactionStartId;
     private String collationSchema;
-    private String collationNane;
+    private String collationName;
+    private int codePage;
 
     private String typeStringUnits;
     private Integer stringUnitsLength;
@@ -116,9 +118,10 @@ public class DB2TableColumn extends JDBCTableColumn<DB2TableBase>
 
         this.remarks = JDBCUtils.safeGetString(dbResult, "REMARKS");
 
+        this.codePage = JDBCUtils.safeGetInt(dbResult, "CODEPAGE");
         if (db2DataSource.isAtLeastV9_5()) {
             this.collationSchema = JDBCUtils.safeGetStringTrimmed(dbResult, "COLLATIONSCHEMA");
-            this.collationNane = JDBCUtils.safeGetString(dbResult, "COLLATIONNAME");
+            this.collationName = JDBCUtils.safeGetString(dbResult, "COLLATIONNAME");
             this.nbQuantiles = JDBCUtils.safeGetInteger(dbResult, "NQUANTILES");
             this.nbMostFreq = JDBCUtils.safeGetInteger(dbResult, "NMOSTFREQ");
         }
@@ -209,7 +212,11 @@ public class DB2TableColumn extends JDBCTableColumn<DB2TableBase>
     @Override
     public DBPDataKind getDataKind()
     {
-        return dataType.getDataKind();
+        DBPDataKind dataKind = dataType.getDataKind();
+        if (dataKind == DBPDataKind.STRING && this.codePage == 0) {
+            return DBPDataKind.CONTENT; // FOR BIT DATA
+        }
+        return dataKind;
     }
 
     @Override
@@ -240,9 +247,10 @@ public class DB2TableColumn extends JDBCTableColumn<DB2TableBase>
         return dataType;
     }
 
+    @Override
     public void setDataType(DB2DataType dataType) {
         this.dataType = dataType;
-        this.setTypeName(dataType.getTypeName());
+        this.typeName = dataType.getTypeName();
     }
 
     @Override
@@ -440,9 +448,9 @@ public class DB2TableColumn extends JDBCTableColumn<DB2TableBase>
     }
 
     @Property(viewable = false, order = 181, category = DB2Constants.CAT_COLLATION)
-    public String getCollationNane()
+    public String getcollationName()
     {
-        return collationNane;
+        return collationName;
     }
 
 }

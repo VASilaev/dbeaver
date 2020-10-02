@@ -2,14 +2,16 @@
 [![Build Status](https://travis-ci.org/dbeaver/dbeaver.svg?branch=devel)](https://travis-ci.org/dbeaver/dbeaver)
 [![Codacy Badge](https://api.codacy.com/project/badge/Grade/70fbe55885864aa38d246b8180f5916a)](https://www.codacy.com/manual/serge/dbeaver?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=dbeaver/dbeaver&amp;utm_campaign=Badge_Grade)
 [![Apache 2.0](https://img.shields.io/github/license/cronn-de/jira-sync.svg)](http://www.apache.org/licenses/LICENSE-2.0)
+![Java CI](https://github.com/dbeaver/dbeaver/workflows/Java%20CI/badge.svg)
 <!--[![paypal](https://img.shields.io/badge/Donate-PayPal-green.svg)](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=KFGAGZ24YZE3C)-->
+
 
 <img src="https://github.com/dbeaver/dbeaver/wiki/images/dbeaver-icon-64x64.png" align="right"/>
 
 # DBeaver
 
 Free multi-platform database tool for developers, SQL programmers, database administrators and analysts. 
-Supports any database which has JDBC driver (which basically means - ANY database). EE version also supports non-JDBC datasources (WMI, MongoDB, Cassandra, Redis).
+Supports any database which has JDBC driver (which basically means - ANY database). EE version also supports non-JDBC datasources (MongoDB, Cassandra, Redis, DynamoDB, etc).
 
 * Has a lot of <a href="https://github.com/dbeaver/dbeaver/wiki">features</a> including metadata editor, SQL editor, rich data editor, ERD, data export/import/migration, SQL execution plans, etc.
 * Based on <a href="http://www.eclipse.org/">Eclipse</a> platform.
@@ -22,7 +24,7 @@ Supports any database which has JDBC driver (which basically means - ANY databas
 
 ## Download
 
-You can download prebuilt binaries from <a href="https://dbeaver.io/download" target="_blank">official web site</a> or directly from <a href="https://github.com/dbeaver/dbeaver/releases">GitHub releases</a>.
+You can download prebuilt binaries from <a href="https://dbeaver.io/download" target="_blank">official website</a> or directly from <a href="https://github.com/dbeaver/dbeaver/releases">GitHub releases</a>.
 
 ## Running
 
@@ -30,7 +32,7 @@ DBeaver requires Java (JRE) 1.8+ to run.
 
 * <b>Windows</b> and <b>MacOS X</b> installers include JRE so just use them and don't think about internals.
 * On <b>Linux</b> you may need to install Java manually (usually by running `sudo apt-get install openjdk-11-jdk` or something similar).
-* If you don't use installer (on Windows or Mac OS X) you may need to download Java (JDK) from <a href="https://adoptopenjdk.net/" target="_blank">Adopt OpenJDK web site</a>.
+* If you don't use installer (on Windows or Mac OS X) you may need to download Java (JDK) from <a href="https://adoptopenjdk.net/" target="_blank">Adopt OpenJDK website</a>.
 
 ## Documentation
 
@@ -57,7 +59,7 @@ Binaries are in `product/standalone/target/products`
 
 ## Notes
 
-- If you have any questions, suggestions, ideas, etc - <a href="mailto:dbeaver@jkiss.org">write us</a>.
+- If you have any questions, suggestions, ideas, etc - please <a href="https://github.com/dbeaver/dbeaver/issues">create a ticket </a>.
 - Pull requests are welcome.
 - Visit https://dbeaver.io or https://dbeaver.com for more information.
 - Follow us on Twitter: https://twitter.com/dbeaver_news/
@@ -74,3 +76,11 @@ That's really cool, we are glad that you like DBeaver.
 Thank you!  
 
 - <a href="https://github.com/dbeaver/dbeaver/graphs/contributors">DBeaver Team</a> (contributors)
+
+---------
+
+<a href="https://github.com/dbeaver/cloudbeaver/"><img src="https://github.com/dbeaver/cloudbeaver/wiki/images/cloudbeaver-logo.png" width="250"/></a>
+
+DBeaver is a desktop client.  
+If you are loooking for a web-based database management tool - check our new product: <a href="https://github.com/dbeaver/cloudbeaver/">CloudBeaver</a>.  
+It is based on DBeaver platform and thus supports any database and most of DBeaver features.

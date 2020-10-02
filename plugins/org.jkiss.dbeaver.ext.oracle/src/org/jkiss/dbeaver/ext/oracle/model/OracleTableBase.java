@@ -49,6 +49,7 @@ import org.jkiss.utils.CommonUtils;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -99,7 +100,7 @@ public abstract class OracleTableBase extends JDBCTable<OracleDataSource, Oracle
     protected OracleTableBase(OracleSchema oracleSchema, ResultSet dbResult)
     {
         super(oracleSchema, true);
-        setName(JDBCUtils.safeGetString(dbResult, "TABLE_NAME"));
+        setName(JDBCUtils.safeGetString(dbResult, "OBJECT_NAME"));
         this.valid = "VALID".equals(JDBCUtils.safeGetString(dbResult, "STATUS"));
         //this.comment = JDBCUtils.safeGetString(dbResult, "COMMENTS");
     }
@@ -211,7 +212,7 @@ public abstract class OracleTableBase extends JDBCTable<OracleDataSource, Oracle
     }
 
     @Override
-    public Collection<OracleTableColumn> getAttributes(@NotNull DBRProgressMonitor monitor)
+    public List<OracleTableColumn> getAttributes(@NotNull DBRProgressMonitor monitor)
         throws DBException
     {
         return getContainer().tableCache.getChildren(monitor, getContainer(), this);
@@ -232,8 +233,9 @@ public abstract class OracleTableBase extends JDBCTable<OracleDataSource, Oracle
         return getContainer().tableCache.refreshObject(monitor, getContainer(), this);
     }
 
+    @Nullable
     @Association
-    public Collection<OracleTableTrigger> getTriggers(DBRProgressMonitor monitor)
+    public List<OracleTableTrigger> getTriggers(@NotNull DBRProgressMonitor monitor)
         throws DBException
     {
         return triggerCache.getAllObjects(monitor, this);

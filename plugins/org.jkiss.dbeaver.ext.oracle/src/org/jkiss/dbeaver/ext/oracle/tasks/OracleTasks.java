@@ -20,5 +20,10 @@ package org.jkiss.dbeaver.ext.oracle.tasks;
 public class OracleTasks {
 
     public static final String TASK_SCRIPT_EXECUTE = "oracleScriptExecute";
+    public static final String TASK_TABLE_VALIDATE_STRUCTURE = "oracleToolValidateStructure";
+    public static final String TASK_TABLE_TRUNCATE = "oracleToolTableTruncate";
+    public static final String TASK_TABLE_GATHER_STATISTICS = "oracleToolTableGatherStatistics";
+    public static final String TASK_INDEX_GATHER_STATISTICS = "oracleToolIndexGatherStatistics";
+    public static final String TASK_MVIEW_REFRESH = "oracleToolMViewRefresh";
 
 }

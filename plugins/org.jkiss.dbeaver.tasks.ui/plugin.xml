@@ -13,13 +13,15 @@
             class="org.jkiss.dbeaver.tasks.ui.view.DatabaseTasksView"
             allowMultiple="false"
             icon="icons/task_list.png"
-            name="%view.tasks.title"/>
+            name="%view.tasks.title">
+            <description>%view.tasks.description</description>
+        </view>
     </extension>
 
     <extension point="org.eclipse.core.expressions.propertyTesters">
         <propertyTester
-                class="org.jkiss.dbeaver.tools.ToolsPropertyTester"
-                id="org.jkiss.dbeaver.tools.ToolsPropertyTester"
+                class="org.jkiss.dbeaver.tasks.ui.ToolsPropertyTester"
+                id="org.jkiss.dbeaver.tasks.ui.ToolsPropertyTester"
                 namespace="org.jkiss.dbeaver.core.tools"
                 properties="hasTools"
                 type="org.eclipse.ui.IWorkbenchPart"/>
@@ -144,9 +146,9 @@
         </menuContribution>
 
         <menuContribution allPopups="false" locationURI="toolbar:org.jkiss.dbeaver.tasks">
-            <command commandId="org.jkiss.dbeaver.task.group" style="toggle" label="Group by project" icon="platform:/plugin/org.jkiss.dbeaver.model/icons/project.png"><parameter name="group" value="project"/></command>
-            <command commandId="org.jkiss.dbeaver.task.group" style="toggle" label="Group by category" icon="icons/task_list.png"><parameter name="group" value="category"/></command>
-            <command commandId="org.jkiss.dbeaver.task.group" style="toggle" label="Group by type" icon="platform:/plugin/org.jkiss.dbeaver.model/icons/tree/task.png"><parameter name="group" value="type"/></command>
+            <command commandId="org.jkiss.dbeaver.task.group" style="toggle" label="%command.org.jkiss.dbeaver.task.group.project.name" icon="platform:/plugin/org.jkiss.dbeaver.model/icons/project.png"><parameter name="group" value="project"/></command>
+            <command commandId="org.jkiss.dbeaver.task.group" style="toggle" label="%command.org.jkiss.dbeaver.task.group.category.name" icon="icons/task_list.png"><parameter name="group" value="category"/></command>
+            <command commandId="org.jkiss.dbeaver.task.group" style="toggle" label="%command.org.jkiss.dbeaver.task.group.type.name" icon="platform:/plugin/org.jkiss.dbeaver.model/icons/tree/task.png"><parameter name="group" value="type"/></command>
             <separator name="additions" visible="true"/>
             <command commandId="org.jkiss.dbeaver.task.run"/>
             <command commandId="org.jkiss.dbeaver.task.create"/>
@@ -155,7 +157,7 @@
         </menuContribution>
 
         <menuContribution allPopups="false" locationURI="toolbar:dbeaver-tools?after=additions">
-            <separator name="tasks" visible="true"/>
+            <separator name="tasks" visible="false"/>
             <command commandId="org.eclipse.ui.views.showView" icon="icons/task_list.png" label="%view.tasks.title" style="pulldown" id="org.jkiss.dbeaver.menu.tasks">
                 <parameter name="org.eclipse.ui.views.showView.viewId" value="org.jkiss.dbeaver.tasks"/>
 
@@ -177,6 +179,11 @@
             <separator name="tasks" visible="true"/>
             <dynamic id="org.jkiss.dbeaver.menu.tasks.recent" class="org.jkiss.dbeaver.tasks.ui.RecentTasksMenuContributor"/>
         </menuContribution>
+
+        <menuContribution allPopups="false" locationURI="menu:window?before=primary.views">
+            <command commandId="org.jkiss.dbeaver.core.view.toggle" style="toggle"><parameter name="viewId" value="org.jkiss.dbeaver.tasks"/></command>
+        </menuContribution>
+
     </extension>
 
     <extension point="org.eclipse.ui.bindings">

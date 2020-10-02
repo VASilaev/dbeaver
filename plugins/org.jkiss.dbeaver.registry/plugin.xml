@@ -27,6 +27,7 @@
         <language code="it" label="%language.it.label"/>
         <language code="ja" label="%language.ja.label"/>
         <language code="es" label="%language.es.label"/>
+        <language code="pt_BR" label="%language.pt_BR.label"/>
         <language code="ko" label="%language.ko.label"/>
     </extension>
 
@@ -57,8 +58,15 @@
         <authModel
             id="native"
             label="Database Native"
-            description="Database native authentication (name/password)"
-            class="org.jkiss.dbeaver.model.impl.auth.DBAAuthDatabaseNative"/>
+            description="Database native authentication"
+            class="org.jkiss.dbeaver.model.impl.auth.AuthModelDatabaseNative">
+
+            <propertyGroup label="Database user">
+                <property id="user" label="User" type="string"/>
+                <property id="password" label="Password" type="string" features="password"/>
+            </propertyGroup>
+
+        </authModel>
     </extension>
 
 </plugin>

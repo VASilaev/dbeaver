@@ -20,11 +20,11 @@ import org.eclipse.swt.SWT;
 import org.eclipse.swt.events.SelectionAdapter;
 import org.eclipse.swt.events.SelectionEvent;
 import org.eclipse.swt.layout.GridData;
-import org.eclipse.swt.layout.GridLayout;
 import org.eclipse.swt.widgets.*;
 import org.jkiss.dbeaver.tools.transfer.internal.DTMessages;
 import org.jkiss.dbeaver.tools.transfer.stream.StreamConsumerSettings;
 import org.jkiss.dbeaver.tools.transfer.stream.StreamTransferConsumer;
+import org.jkiss.dbeaver.tools.transfer.ui.internal.DTUIMessages;
 import org.jkiss.dbeaver.tools.transfer.ui.wizard.DataTransferWizard;
 import org.jkiss.dbeaver.ui.UIUtils;
 import org.jkiss.dbeaver.ui.contentassist.ContentAssistUtils;
@@ -66,12 +66,7 @@ public class StreamConsumerPageOutput extends ActiveWizardPage<DataTransferWizar
     public void createControl(Composite parent) {
         initializeDialogUnits(parent);
 
-        Composite composite = new Composite(parent, SWT.NULL);
-        GridLayout gl = new GridLayout();
-        gl.marginHeight = 0;
-        gl.marginWidth = 0;
-        composite.setLayout(gl);
-        composite.setLayoutData(new GridData(GridData.FILL_BOTH));
+        Composite composite = UIUtils.createComposite(parent, 1);
 
         final StreamConsumerSettings settings = getWizard().getPageSettings(this, StreamConsumerSettings.class);
 
@@ -99,7 +94,7 @@ public class StreamConsumerPageOutput extends ActiveWizardPage<DataTransferWizar
             fileNameText = new Text(generalSettings, SWT.BORDER);
             GridData gd = new GridData(GridData.FILL_HORIZONTAL);
             gd.horizontalSpan = 4;
-            UIUtils.setContentProposalToolTip(fileNameText, "Output file name pattern",
+            UIUtils.setContentProposalToolTip(fileNameText, DTUIMessages.stream_consumer_page_output_tooltip_output_file_name_pattern,
                 StreamTransferConsumer.VARIABLE_DATASOURCE,
                 StreamTransferConsumer.VARIABLE_CATALOG,
                 StreamTransferConsumer.VARIABLE_SCHEMA,
@@ -107,7 +102,8 @@ public class StreamConsumerPageOutput extends ActiveWizardPage<DataTransferWizar
                 StreamTransferConsumer.VARIABLE_TIMESTAMP,
                 StreamTransferConsumer.VARIABLE_DATE,
                 StreamTransferConsumer.VARIABLE_INDEX,
-                StreamTransferConsumer.VARIABLE_PROJECT);
+                StreamTransferConsumer.VARIABLE_PROJECT,
+                StreamTransferConsumer.VARIABLE_CONN_TYPE);
             fileNameText.setLayoutData(gd);
             fileNameText.addModifyListener(e -> {
                 settings.setOutputFilePattern(fileNameText.getText());
@@ -124,6 +120,7 @@ public class StreamConsumerPageOutput extends ActiveWizardPage<DataTransferWizar
                     GeneralUtils.variablePattern(StreamTransferConsumer.VARIABLE_TIMESTAMP),
                     GeneralUtils.variablePattern(StreamTransferConsumer.VARIABLE_DATE),
                     GeneralUtils.variablePattern(StreamTransferConsumer.VARIABLE_INDEX),
+                    GeneralUtils.variablePattern(StreamTransferConsumer.VARIABLE_CONN_TYPE),
                     GeneralUtils.variablePattern(StreamTransferConsumer.VARIABLE_PROJECT)));
 
             {
@@ -180,7 +177,7 @@ public class StreamConsumerPageOutput extends ActiveWizardPage<DataTransferWizar
                         updateControlsEnablement();
                     }
                 });
-                maximumFileSizeLabel = UIUtils.createControlLabel(outFilesSettings, "Maximum file size");
+                maximumFileSizeLabel = UIUtils.createControlLabel(outFilesSettings, DTUIMessages.stream_consumer_page_output_label_maximum_file_size);
                 maximumFileSizeText = new Text(outFilesSettings, SWT.BORDER);
                 maximumFileSizeText.addVerifyListener(UIUtils.getIntegerVerifyListener(Locale.ENGLISH));
                 maximumFileSizeText.addModifyListener(e ->
@@ -192,7 +189,7 @@ public class StreamConsumerPageOutput extends ActiveWizardPage<DataTransferWizar
         }
 
         {
-            Group resultsSettings = UIUtils.createControlGroup(composite, "Results", 2, GridData.FILL_HORIZONTAL, 0);
+            Group resultsSettings = UIUtils.createControlGroup(composite, DTUIMessages.stream_consumer_page_output_label_results, 2, GridData.FILL_HORIZONTAL, 0);
 
             showFolderCheckbox = UIUtils.createCheckbox(resultsSettings, DTMessages.data_transfer_wizard_output_checkbox_open_folder, true);
             showFolderCheckbox.addSelectionListener(new SelectionAdapter() {
@@ -203,7 +200,7 @@ public class StreamConsumerPageOutput extends ActiveWizardPage<DataTransferWizar
             });
             showFolderCheckbox.setLayoutData(new GridData(GridData.HORIZONTAL_ALIGN_BEGINNING, GridData.VERTICAL_ALIGN_BEGINNING, false, false, 2, 1));
 
-            execProcessCheckbox = UIUtils.createCheckbox(resultsSettings, "Execute process on finish", true);
+            execProcessCheckbox = UIUtils.createCheckbox(resultsSettings, DTUIMessages.stream_consumer_page_output_checkbox_execute_process, true);
             execProcessCheckbox.addSelectionListener(new SelectionAdapter() {
                 @Override
                 public void widgetSelected(SelectionEvent e) {
@@ -218,12 +215,13 @@ public class StreamConsumerPageOutput extends ActiveWizardPage<DataTransferWizar
                 settings.setFinishProcessCommand(execProcessText.getText());
                 updatePageCompletion();
             });
-            UIUtils.setContentProposalToolTip(execProcessText, "Process command line",
+            UIUtils.setContentProposalToolTip(execProcessText, DTUIMessages.stream_consumer_page_output_tooltip_process_command_line,
                 StreamTransferConsumer.VARIABLE_FILE,
                 StreamTransferConsumer.VARIABLE_TABLE,
                 StreamTransferConsumer.VARIABLE_TIMESTAMP,
                 StreamTransferConsumer.VARIABLE_DATE,
-                StreamTransferConsumer.VARIABLE_PROJECT);
+                StreamTransferConsumer.VARIABLE_PROJECT,
+                StreamTransferConsumer.VARIABLE_CONN_TYPE);
             ContentAssistUtils.installContentProposal(
                 execProcessText,
                 new SmartTextContentAdapter(),
@@ -232,9 +230,10 @@ public class StreamConsumerPageOutput extends ActiveWizardPage<DataTransferWizar
                     GeneralUtils.variablePattern(StreamTransferConsumer.VARIABLE_TIMESTAMP),
                     GeneralUtils.variablePattern(StreamTransferConsumer.VARIABLE_DATE),
                     GeneralUtils.variablePattern(StreamTransferConsumer.VARIABLE_PROJECT),
+                    GeneralUtils.variablePattern(StreamTransferConsumer.VARIABLE_CONN_TYPE),
                     GeneralUtils.variablePattern(StreamTransferConsumer.VARIABLE_FILE)));
 
-            showFinalMessageCheckbox = UIUtils.createCheckbox(resultsSettings, "Show finish message", null, getWizard().getSettings().isShowFinalMessage(), 4);
+            showFinalMessageCheckbox = UIUtils.createCheckbox(resultsSettings, DTUIMessages.stream_consumer_page_output_label_show_finish_message, null, getWizard().getSettings().isShowFinalMessage(), 4);
             showFinalMessageCheckbox.addSelectionListener(new SelectionAdapter() {
                 @Override
                 public void widgetSelected(SelectionEvent e) {

@@ -16,6 +16,7 @@
  */
 package org.jkiss.dbeaver.tools.transfer.ui.pages.stream;
 
+import org.eclipse.jface.dialogs.IMessageProvider;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.custom.SashForm;
 import org.eclipse.swt.events.SelectionAdapter;
@@ -24,15 +25,28 @@ import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Table;
 import org.eclipse.swt.widgets.TableItem;
-import org.jkiss.dbeaver.model.DBPEvaluationContext;
-import org.jkiss.dbeaver.model.DBUtils;
+import org.jkiss.code.NotNull;
+import org.jkiss.dbeaver.DBException;
+import org.jkiss.dbeaver.Log;
+import org.jkiss.dbeaver.model.navigator.DBNDatabaseNode;
+import org.jkiss.dbeaver.model.navigator.DBNUtils;
 import org.jkiss.dbeaver.model.preferences.DBPPropertyDescriptor;
+import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
+import org.jkiss.dbeaver.model.runtime.DBRRunnableWithProgress;
+import org.jkiss.dbeaver.model.struct.DBSDataManipulator;
+import org.jkiss.dbeaver.model.struct.DBSObject;
+import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.runtime.properties.PropertySourceCustom;
-import org.jkiss.dbeaver.tools.transfer.DataTransferPipe;
-import org.jkiss.dbeaver.tools.transfer.DataTransferSettings;
+import org.jkiss.dbeaver.tools.transfer.*;
+import org.jkiss.dbeaver.tools.transfer.database.DatabaseConsumerSettings;
+import org.jkiss.dbeaver.tools.transfer.database.DatabaseMappingContainer;
+import org.jkiss.dbeaver.tools.transfer.database.DatabaseTransferConsumer;
 import org.jkiss.dbeaver.tools.transfer.internal.DTMessages;
 import org.jkiss.dbeaver.tools.transfer.registry.DataTransferProcessorDescriptor;
+import org.jkiss.dbeaver.tools.transfer.stream.StreamEntityMapping;
+import org.jkiss.dbeaver.tools.transfer.stream.StreamProducerSettings;
 import org.jkiss.dbeaver.tools.transfer.stream.StreamTransferProducer;
+import org.jkiss.dbeaver.tools.transfer.ui.internal.DTUIMessages;
 import org.jkiss.dbeaver.tools.transfer.ui.wizard.DataTransferWizard;
 import org.jkiss.dbeaver.ui.DBeaverIcons;
 import org.jkiss.dbeaver.ui.UIUtils;
@@ -42,10 +56,13 @@ import org.jkiss.dbeaver.ui.properties.PropertyTreeViewer;
 import org.jkiss.utils.CommonUtils;
 
 import java.io.File;
+import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 public class StreamProducerPageSettings extends ActiveWizardPage<DataTransferWizard> {
+    private static final Log log = Log.getLog(StreamProducerPageSettings.class);
 
     private PropertyTreeViewer propsEditor;
     private PropertySourceCustom propertySource;
@@ -59,11 +76,9 @@ public class StreamProducerPageSettings extends ActiveWizardPage<DataTransferWiz
 
     @Override
     public void createControl(Composite parent) {
-
         initializeDialogUnits(parent);
 
         SashForm settingsDivider = new SashForm(parent, SWT.VERTICAL);
-        settingsDivider.setLayoutData(new GridData(GridData.FILL_BOTH));
 
         {
             Composite inputFilesGroup = UIUtils.createControlGroup(settingsDivider, DTMessages.data_transfer_wizard_settings_group_input_files, 1, GridData.FILL_BOTH, 0);
@@ -73,8 +88,8 @@ public class StreamProducerPageSettings extends ActiveWizardPage<DataTransferWiz
             filesTable.setHeaderVisible(true);
             filesTable.setLinesVisible(true);
 
-            UIUtils.createTableColumn(filesTable, SWT.LEFT, DTMessages.data_transfer_wizard_final_column_source);
-            UIUtils.createTableColumn(filesTable, SWT.LEFT, DTMessages.data_transfer_wizard_final_column_target);
+            UIUtils.createTableColumn(filesTable, SWT.LEFT, DTUIMessages.data_transfer_wizard_final_column_source);
+            UIUtils.createTableColumn(filesTable, SWT.LEFT, DTUIMessages.data_transfer_wizard_final_column_target);
 
             filesTable.addSelectionListener(new SelectionAdapter() {
                 @Override
@@ -84,10 +99,7 @@ public class StreamProducerPageSettings extends ActiveWizardPage<DataTransferWiz
                     }
                     TableItem item = filesTable.getItem(filesTable.getSelectionIndex());
                     DataTransferPipe pipe = (DataTransferPipe) item.getData();
-                    if (chooseSourceFile(pipe)) {
-                        updateItemData(item, pipe);
-                        updatePageCompletion();
-                    }
+                    chooseSourceFile(pipe);
                 }
 
                 @Override
@@ -95,7 +107,6 @@ public class StreamProducerPageSettings extends ActiveWizardPage<DataTransferWiz
                     widgetSelected(e);
                 }
             });
-            UIUtils.asyncExec(() -> UIUtils.packColumns(filesTable, true));
         }
 
         {
@@ -103,14 +114,14 @@ public class StreamProducerPageSettings extends ActiveWizardPage<DataTransferWiz
 
             propsEditor = new PropertyTreeViewer(exporterSettings, SWT.BORDER);
         }
-        settingsDivider.setWeights(new int[]{ 400, 600 });
+        settingsDivider.setWeights(new int[]{400, 600});
 
         setControl(settingsDivider);
 
         updatePageCompletion();
     }
 
-    private boolean chooseSourceFile(DataTransferPipe pipe) {
+    private void chooseSourceFile(DataTransferPipe pipe) {
         List<String> extensions = new ArrayList<>();
         String extensionProp = CommonUtils.toString(propertySource.getPropertyValue(null, "extension"));
         for (String ext : extensionProp.split(",")) {
@@ -118,34 +129,128 @@ public class StreamProducerPageSettings extends ActiveWizardPage<DataTransferWiz
         }
         extensions.add("*");
 
-        File file = DialogUtils.openFile(getShell(), extensions.toArray(new String[extensions.size()]));
-        if (file != null) {
-            pipe.setProducer(new StreamTransferProducer(file));
-            updatePageCompletion();
-            return true;
+        DBRRunnableWithProgress initializer = null;
+        if (pipe.getConsumer() != null && pipe.getConsumer().getTargetObjectContainer() != null) {
+            File[] files = DialogUtils.openFileList(getShell(), "Select input files", extensions.toArray(new String[0]));
+            if (files != null && files.length > 0) {
+                initializer = monitor -> updateMultiConsumers(monitor, pipe, files);
+            }
+        } else {
+            File file = DialogUtils.openFile(getShell(), extensions.toArray(new String[0]));
+            if (file != null) {
+                initializer = monitor -> updateSingleConsumer(monitor, pipe, file);
+            }
         }
-        return false;
+        if (initializer != null) {
+            try {
+                getWizard().getRunnableContext().run(true, true, initializer);
+            } catch (InvocationTargetException e) {
+                DBWorkbench.getPlatformUI().showError("Column mappings error", "Error reading column mappings from stream", e.getTargetException());
+                return;
+            } catch (InterruptedException e) {
+                // ignore
+            }
+        }
+        reloadPipes();
+        updatePageCompletion();
+    }
+
+    private void updateSingleConsumer(DBRProgressMonitor monitor, DataTransferPipe pipe, File file) {
+        final StreamProducerSettings producerSettings = getWizard().getPageSettings(this, StreamProducerSettings.class);
+
+        StreamTransferProducer producer = new StreamTransferProducer(new StreamEntityMapping(file));
+        pipe.setProducer(producer);
+
+        producerSettings.updateProducerSettingsFromStream(
+            monitor,
+            producer,
+            getWizard().getSettings());
+
+        IDataTransferSettings consumerSettings = getWizard().getSettings().getNodeSettings(getWizard().getSettings().getConsumer());
+        if (consumerSettings instanceof DatabaseConsumerSettings) {
+            DatabaseMappingContainer mapping = new DatabaseMappingContainer((DatabaseConsumerSettings) consumerSettings, producer.getDatabaseObject());
+            if (pipe.getConsumer() != null && pipe.getConsumer().getDatabaseObject() instanceof DBSDataManipulator) {
+                mapping.setTarget((DBSDataManipulator) pipe.getConsumer().getDatabaseObject());
+            } else {
+                mapping.setTarget(null);
+                mapping.setTargetName(generateTableName(producer.getInputFile()));
+            }
+
+            ((DatabaseConsumerSettings) consumerSettings).addDataMappings(getWizard().getRunnableContext(), producer.getDatabaseObject(), mapping);
+        }
+    }
+
+    private void updateMultiConsumers(DBRProgressMonitor monitor, DataTransferPipe pipe, File[] files) {
+        final StreamProducerSettings producerSettings = getWizard().getPageSettings(this, StreamProducerSettings.class);
+        IDataTransferConsumer<?, ?> originalConsumer = pipe.getConsumer();
+
+        DataTransferSettings dtSettings = getWizard().getSettings();
+        List<DataTransferPipe> newPipes = new ArrayList<>(dtSettings.getDataPipes());
+        newPipes.remove(pipe);
+
+        for (File file : files) {
+            StreamTransferProducer producer = new StreamTransferProducer(new StreamEntityMapping(file));
+            IDataTransferConsumer<?, ?> consumer = new DatabaseTransferConsumer();
+
+            DataTransferPipe singlePipe = new DataTransferPipe(producer, consumer);
+            try {
+                singlePipe.initPipe(dtSettings, newPipes.size(), newPipes.size());
+            } catch (DBException e) {
+                log.error(e);
+                continue;
+            }
+            newPipes.add(singlePipe);
+            producerSettings.updateProducerSettingsFromStream(
+                monitor,
+                producer,
+                dtSettings);
+
+            IDataTransferSettings consumerSettings = dtSettings.getNodeSettings(dtSettings.getConsumer());
+            if (consumerSettings instanceof DatabaseConsumerSettings) {
+                DatabaseConsumerSettings dcs = (DatabaseConsumerSettings) consumerSettings;
+                if (originalConsumer != null && originalConsumer.getTargetObjectContainer() instanceof DBSObject) {
+                    DBNDatabaseNode containerNode = DBNUtils.getNodeByObject(
+                        monitor, (DBSObject)originalConsumer.getTargetObjectContainer(), false);
+                    if (containerNode != null) {
+                        dcs.setContainerNode(containerNode);
+                    }
+                }
+                DatabaseMappingContainer mapping = new DatabaseMappingContainer(dcs, producer.getDatabaseObject());
+                //mapping.setTarget(null);
+                mapping.setTargetName(generateTableName(producer.getInputFile()));
+
+                dcs.addDataMappings(getWizard().getRunnableContext(), producer.getDatabaseObject(), mapping);
+            }
+        }
+
+        dtSettings.setDataPipes(newPipes, true);
+        dtSettings.setPipeChangeRestricted(true);
     }
 
     private void updateItemData(TableItem item, DataTransferPipe pipe) {
-        if (pipe.getProducer() == null || pipe.getProducer().getObjectName() == null) {
+        if (isInvalidDataTransferNode(pipe.getProducer())) {
             item.setImage(0, null);
-            item.setText(0, "<none>");
+            item.setText(0, DTUIMessages.stream_consumer_page_settings_item_text_none);
         } else {
             item.setImage(0, DBeaverIcons.getImage(getProducerProcessor().getIcon()));
-            item.setText(0, pipe.getProducer().getObjectName());
+            item.setText(0, String.valueOf(pipe.getProducer().getObjectName()));
         }
-        if (pipe.getConsumer() == null || pipe.getConsumer().getDatabaseObject() == null) {
+        if (isInvalidDataTransferNode(pipe.getConsumer())) {
             item.setImage(1, null);
-            item.setText(1, "<none>");
+            item.setText(1, DTUIMessages.stream_consumer_page_settings_item_text_none);
         } else {
             item.setImage(1, DBeaverIcons.getImage(getWizard().getSettings().getConsumer().getIcon()));
-            item.setText(1, DBUtils.getObjectFullName(pipe.getConsumer().getDatabaseObject(), DBPEvaluationContext.DML));
+            item.setText(1, String.valueOf(pipe.getConsumer().getObjectName()));
         }
+    }
+
+    private boolean isInvalidDataTransferNode(final IDataTransferNode<?> node) {
+        return node == null || node.getObjectName() == null;
     }
 
     @Override
     public void activatePage() {
+        // Initialize property editor
         DataTransferProcessorDescriptor processor = getProducerProcessor();
         DBPPropertyDescriptor[] properties = processor == null ? new DBPPropertyDescriptor[0] : processor.getProperties();
         propertySource = new PropertySourceCustom(
@@ -153,44 +258,120 @@ public class StreamProducerPageSettings extends ActiveWizardPage<DataTransferWiz
             getWizard().getSettings().getProcessorProperties());
         propsEditor.loadProperties(propertySource);
 
-        {
-            DataTransferSettings settings = getWizard().getSettings();
-            filesTable.removeAll();
-            for (DataTransferPipe pipe : settings.getDataPipes()) {
-                TableItem item = new TableItem(filesTable, SWT.NONE);
-                item.setData(pipe);
-                updateItemData(item, pipe);
-            }
-        }
+        // Init pipes
+        reloadPipes();
 
         updatePageCompletion();
-    }
 
-    private DataTransferProcessorDescriptor getProducerProcessor() {
-        //getWizard().getSettings().getDataPipes()
-        return getWizard().getSettings().getProcessor();
+        UIUtils.asyncExec(() -> UIUtils.packColumns(filesTable, true));
     }
 
     @Override
-    public void deactivatePage()
-    {
-        //final StreamProducerSettings producerSettings = getWizard().getPageSettings(this, StreamProducerSettings.class);
+    public void deactivatePage() {
+        // Save settings.
+        // It is a producer so it must prepare data for consumers
 
-        getWizard().getSettings().setProcessorProperties(propertySource.getPropertiesWithDefaults());
+        // Save processor properties
+        Map<String, Object> processorProperties = propertySource.getPropertiesWithDefaults();
+        DataTransferSettings dtSettings = getWizard().getSettings();
+        dtSettings.setProcessorProperties(processorProperties);
+
+        final StreamProducerSettings producerSettings = getWizard().getPageSettings(this, StreamProducerSettings.class);
+        if (producerSettings != null) {
+            producerSettings.setProcessorProperties(processorProperties);
+        }
+
+        // Update column mappings for database consumers
+        IDataTransferSettings consumerSettings = getWizard().getSettings().getNodeSettings(getWizard().getSettings().getConsumer());
+
+        try {
+            getWizard().getRunnableContext().run(true, true, monitor -> {
+                for (DataTransferPipe pipe : dtSettings.getDataPipes()) {
+                    if (pipe.getProducer() instanceof StreamTransferProducer) {
+                        StreamTransferProducer producer = (StreamTransferProducer) pipe.getProducer();
+                        producerSettings.updateProducerSettingsFromStream(
+                            monitor,
+                            producer,
+                            dtSettings);
+
+                        if (consumerSettings instanceof DatabaseConsumerSettings) {
+                            DatabaseMappingContainer mapping = ((DatabaseConsumerSettings) consumerSettings).getDataMapping(
+                                producer.getDatabaseObject());
+                            if (mapping != null) {
+                                mapping.getAttributeMappings(monitor);
+                            }
+                        }
+                    }
+                }
+            });
+        } catch (InvocationTargetException e) {
+            DBWorkbench.getPlatformUI().showError("Error updating stream settings", "Error updating settings", e.getTargetException());
+        } catch (InterruptedException e) {
+            // ignore
+        }
 
         super.deactivatePage();
     }
 
     @Override
-    protected boolean determinePageCompletion()
-    {
-        for (DataTransferPipe pipe : getWizard().getSettings().getDataPipes()) {
-            if (pipe.getConsumer() == null || pipe.getConsumer().getObjectName() == null || pipe.getProducer() == null || pipe.getProducer().getObjectName() == null) {
+    protected boolean determinePageCompletion() {
+        for (int i = 0; i < filesTable.getItemCount(); i++) {
+            final DataTransferPipe pipe = (DataTransferPipe) filesTable.getItem(i).getData();
+            if (isInvalidDataTransferNode(pipe.getConsumer()) || isInvalidDataTransferNode(pipe.getProducer())) {
+                setMessage(DTUIMessages.stream_consumer_page_warning_not_enough_sources_chosen, IMessageProvider.WARNING);
                 return false;
             }
         }
-
+        setMessage(null);
         return true;
     }
 
+    private void reloadPipes() {
+        boolean firstTime = filesTable.getItemCount() == 0;
+        DataTransferSettings settings = getWizard().getSettings();
+        filesTable.removeAll();
+        List<DataTransferPipe> dataPipes = settings.getDataPipes();
+        for (DataTransferPipe pipe : dataPipes) {
+            TableItem item = new TableItem(filesTable, SWT.NONE);
+            item.setData(pipe);
+            updateItemData(item, pipe);
+        }
+        if (firstTime && !dataPipes.isEmpty()) {
+            DataTransferPipe pipe = dataPipes.get(0);
+            if (pipe.getProducer() instanceof StreamTransferProducer && ((StreamTransferProducer) pipe.getProducer()).getInputFile() == null) {
+                chooseSourceFile(pipe);
+            }
+        }
+    }
+
+    private DataTransferProcessorDescriptor getProducerProcessor() {
+        return getWizard().getSettings().getProcessor();
+    }
+
+    @NotNull
+    private String generateTableName(File file) {
+        StringBuilder name = new StringBuilder();
+        String fileName = file.getName();
+        boolean lastCharSpecial = false;
+        char lastChar = (char)0;
+        for (int i = 0; i < fileName.length(); i++) {
+            char c = fileName.charAt(i);
+            if (!Character.isLetter(c) && lastCharSpecial) {
+                break;
+            }
+            lastCharSpecial = !Character.isLetterOrDigit(c);
+            if (lastCharSpecial) {
+                if (c != '_') c = '_';
+                if (lastChar == '_') {
+                    continue;
+                }
+            }
+            lastChar = c;
+            name.append(c);
+        }
+        if (name.length() > 0 && name.charAt(name.length() - 1) == '_') {
+            name.deleteCharAt(name.length() - 1);
+        }
+        return name.toString();
+    }
 }

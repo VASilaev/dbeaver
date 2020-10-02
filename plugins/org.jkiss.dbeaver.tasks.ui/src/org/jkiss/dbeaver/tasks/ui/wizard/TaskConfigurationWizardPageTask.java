@@ -19,18 +19,17 @@ package org.jkiss.dbeaver.tasks.ui.wizard;
 import org.eclipse.jface.dialogs.IDialogConstants;
 import org.eclipse.jface.viewers.ISelection;
 import org.eclipse.jface.viewers.IStructuredSelection;
+import org.eclipse.osgi.util.NLS;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.events.*;
 import org.eclipse.swt.layout.GridData;
-import org.eclipse.swt.widgets.Composite;
-import org.eclipse.swt.widgets.Text;
-import org.eclipse.swt.widgets.Tree;
-import org.eclipse.swt.widgets.TreeItem;
+import org.eclipse.swt.widgets.*;
 import org.eclipse.ui.IWorkbenchPart;
 import org.eclipse.ui.IWorkbenchWindow;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.model.DBIcon;
+import org.jkiss.dbeaver.model.DBPDataSourceContainer;
 import org.jkiss.dbeaver.model.app.DBPProject;
 import org.jkiss.dbeaver.model.task.DBTTask;
 import org.jkiss.dbeaver.model.task.DBTTaskCategory;
@@ -38,6 +37,7 @@ import org.jkiss.dbeaver.model.task.DBTTaskType;
 import org.jkiss.dbeaver.registry.task.TaskImpl;
 import org.jkiss.dbeaver.registry.task.TaskRegistry;
 import org.jkiss.dbeaver.tasks.ui.DBTTaskConfigurator;
+import org.jkiss.dbeaver.tasks.ui.internal.TaskUIMessages;
 import org.jkiss.dbeaver.tasks.ui.registry.TaskUIRegistry;
 import org.jkiss.dbeaver.ui.DBeaverIcons;
 import org.jkiss.dbeaver.ui.UIUtils;
@@ -45,6 +45,7 @@ import org.jkiss.dbeaver.ui.dialogs.ActiveWizardPage;
 import org.jkiss.dbeaver.ui.navigator.NavigatorUtils;
 import org.jkiss.utils.CommonUtils;
 
+import java.util.List;
 import java.util.*;
 
 /**
@@ -65,13 +66,14 @@ class TaskConfigurationWizardPageTask extends ActiveWizardPage<TaskConfiguration
     private Map<String, Object> initialProperties = new LinkedHashMap<>();
 
     private TaskImpl task;
+    private boolean filterTaskTypes = true;
 
     private Map<DBTTaskType, TaskConfigurationWizard> taskWizards = new HashMap<>();
 
     TaskConfigurationWizardPageTask(DBTTask task) {
-        super(task == null ? "Create new task" : "Edit task");
-        setTitle(task == null ? "New task properties" : "Edit task properties");
-        setDescription("Set task name, type and input data");
+        super(task == null ? TaskUIMessages.task_config_wizard_page_settings_create_task : TaskUIMessages.task_config_wizard_page_settings_edit_task);
+        setTitle(task == null ? TaskUIMessages.task_config_wizard_page_task_title_new_task_prop : TaskUIMessages.task_config_wizard_page_settings_title_task_prop);
+        setDescription(TaskUIMessages.task_config_wizard_page_settings_descr_set_task);
 
         this.task = (TaskImpl) task;
         if (this.task != null) {
@@ -113,15 +115,61 @@ class TaskConfigurationWizardPageTask extends ActiveWizardPage<TaskConfiguration
     public void createControl(Composite parent) {
         boolean taskSaved = task != null && !CommonUtils.isEmpty(task.getId());
 
-        Composite composite = UIUtils.createComposite(parent, 2);
+        Composite composite = UIUtils.createComposite(parent, 1);
         composite.setLayoutData(new GridData(GridData.FILL_BOTH));
 
         {
-            Composite formPanel = UIUtils.createControlGroup(composite, "Task type", task == null ? 1 : 2, GridData.FILL_BOTH, 0);
+            Composite formPanel = UIUtils.createControlGroup(composite, TaskUIMessages.task_config_wizard_page_task_label_task_type, task == null ? 1 : 2, GridData.FILL_BOTH, 0);
             formPanel.setLayoutData(new GridData(GridData.FILL_BOTH));
 
+            {
+                Composite infoPanel = UIUtils.createComposite(formPanel, 2);
+                infoPanel.setLayoutData(new GridData(GridData.FILL_HORIZONTAL));
+
+                ModifyListener modifyListener = e -> updatePageCompletion();
+
+                taskLabelText = UIUtils.createLabelText(infoPanel, TaskUIMessages.task_config_wizard_page_task_text_label_name, task == null ? "" : CommonUtils.notEmpty(task.getName()), SWT.BORDER);
+                if (taskSaved) {
+                    taskLabelText.setEditable(false);
+                    //taskLabelText.setEnabled(false);
+                }
+                taskLabelText.addModifyListener(e -> {
+                    taskName = taskLabelText.getText();
+                    modifyListener.modifyText(e);
+                });
+
+                UIUtils.createControlLabel(infoPanel, TaskUIMessages.task_config_wizard_page_task_control_label_descr).setLayoutData(new GridData(GridData.VERTICAL_ALIGN_BEGINNING));
+
+                taskDescriptionText = new Text(infoPanel, SWT.BORDER | SWT.MULTI);
+                taskDescriptionText.setText(task == null ? "" : CommonUtils.notEmpty(task.getDescription()));
+                taskDescriptionText.setLayoutData(new GridData(GridData.FILL_HORIZONTAL));
+                //((GridData) taskDescriptionText.getLayoutData()).heightHint = taskDescriptionText.getLineHeight() * 6;
+                taskDescriptionText.addModifyListener(e -> {
+                    taskDescription = taskDescriptionText.getText();
+                    modifyListener.modifyText(e);
+                });
+
+                if (task != null && !CommonUtils.isEmpty(task.getId())) {
+                    UIUtils.createLabelText(infoPanel, TaskUIMessages.task_config_wizard_page_task_text_label_task_id, task.getId(), SWT.BORDER | SWT.READ_ONLY);
+                }
+
+                UIUtils.asyncExec(() -> (taskSaved ? taskDescriptionText : taskLabelText).setFocus());
+
+                if (task != null) {
+                    UIUtils.createControlLabel(infoPanel, TaskUIMessages.task_config_wizard_page_task_control_label_category);
+                    Composite catPanel = UIUtils.createComposite(infoPanel, 2);
+                    UIUtils.createLabel(catPanel, task.getType().getCategory().getIcon());
+                    UIUtils.createLabel(catPanel, task.getType().getCategory().getName());
+
+                    UIUtils.createControlLabel(infoPanel, TaskUIMessages.task_config_wizard_page_task_control_label_type);
+                    Composite typePanel = UIUtils.createComposite(infoPanel, 2);
+                    UIUtils.createLabel(typePanel, task.getType().getIcon());
+                    UIUtils.createLabel(typePanel, task.getType().getName());
+                }
+            }
+
             if (task == null) {
-                taskCategoryTree = new Tree(formPanel, SWT.BORDER | SWT.SINGLE);
+                taskCategoryTree = new Tree(formPanel, SWT.BORDER | SWT.SINGLE | SWT.FULL_SELECTION);
                 GridData gd = new GridData(GridData.FILL_BOTH);
                 gd.heightHint = 100;
                 gd.widthHint = 200;
@@ -150,6 +198,10 @@ class TaskConfigurationWizardPageTask extends ActiveWizardPage<TaskConfiguration
                         }
                     }
                 });
+                TreeColumn nameColumn = new TreeColumn(taskCategoryTree, SWT.LEFT);
+                nameColumn.setText("Task");
+                TreeColumn descColumn = new TreeColumn(taskCategoryTree, SWT.RIGHT);
+                descColumn.setText("Description");
                 addTaskCategories(null, TaskRegistry.getInstance().getRootCategories());
                 taskCategoryTree.addMouseListener(new MouseAdapter() {
                     @Override
@@ -159,52 +211,16 @@ class TaskConfigurationWizardPageTask extends ActiveWizardPage<TaskConfiguration
                         }
                     }
                 });
+                UIUtils.asyncExec(() -> UIUtils.packColumns(taskCategoryTree, true, new float[] { 0.3f, 0.7f}));
+                taskCategoryTree.addControlListener(new ControlAdapter() {
+                    @Override
+                    public void controlResized(ControlEvent e) {
+                        UIUtils.packColumns(taskCategoryTree, true, new float[] { 0.3f, 0.7f});
+                        taskCategoryTree.removeControlListener(this);
+                    }
+                });
 
-            } else {
-
-                UIUtils.createControlLabel(formPanel, "Category");
-                Composite catPanel = UIUtils.createComposite(formPanel, 2);
-                UIUtils.createLabel(catPanel, task.getType().getCategory().getIcon());
-                UIUtils.createLabel(catPanel, task.getType().getCategory().getName());
-
-                UIUtils.createControlLabel(formPanel, "Type");
-                Composite typePanel = UIUtils.createComposite(formPanel, 2);
-                UIUtils.createLabel(typePanel, task.getType().getIcon());
-                UIUtils.createLabel(typePanel, task.getType().getName());
             }
-        }
-
-        {
-            Composite formPanel = UIUtils.createControlGroup(composite, "Task info", 2, GridData.FILL_BOTH, 0);
-            formPanel.setLayoutData(new GridData(GridData.FILL_BOTH));
-
-            ModifyListener modifyListener = e -> updatePageCompletion();
-
-            taskLabelText = UIUtils.createLabelText(formPanel, "Name", task == null ? "" : CommonUtils.notEmpty(task.getName()), SWT.BORDER);
-            if (taskSaved) {
-                taskLabelText.setEditable(false);
-                //taskLabelText.setEnabled(false);
-            }
-            taskLabelText.addModifyListener(e -> {
-                taskName = taskLabelText.getText();
-                modifyListener.modifyText(e);
-            });
-
-            UIUtils.createControlLabel(formPanel, "Description").setLayoutData(new GridData(GridData.VERTICAL_ALIGN_BEGINNING));
-            taskDescriptionText = new Text(formPanel, SWT.BORDER | SWT.MULTI | SWT.V_SCROLL);
-            taskDescriptionText.setText(task == null ? "" : CommonUtils.notEmpty(task.getDescription()));
-            taskDescriptionText.setLayoutData(new GridData(GridData.FILL_HORIZONTAL));
-            ((GridData) taskDescriptionText.getLayoutData()).heightHint = taskDescriptionText.getLineHeight() * 6;
-            taskDescriptionText.addModifyListener(e -> {
-                taskDescription = taskDescriptionText.getText();
-                modifyListener.modifyText(e);
-            });
-
-            if (task != null && !CommonUtils.isEmpty(task.getId())) {
-                UIUtils.createLabelText(formPanel, "Task ID", task.getId(), SWT.BORDER | SWT.READ_ONLY);
-            }
-
-            UIUtils.asyncExec(() -> (taskSaved ? taskDescriptionText : taskLabelText).setFocus());
         }
 
         setPageComplete(determinePageCompletion());
@@ -229,9 +245,13 @@ class TaskConfigurationWizardPageTask extends ActiveWizardPage<TaskConfiguration
         allCats.sort(Comparator.comparing(DBTTaskCategory::getName));
 
         for (DBTTaskCategory cat : categories) {
+            if (!isTaskCategoryApplicable(cat)) {
+                continue;
+            }
             TreeItem item = parentItem == null ? new TreeItem(taskCategoryTree, SWT.NONE) : new TreeItem(parentItem, SWT.NONE);
-            item.setText(cat.getName());
-            item.setImage(DBeaverIcons.getImage(cat.getIcon() == null ? DBIcon.TREE_TASK : cat.getIcon()));
+            item.setText(0, cat.getName());
+            item.setImage(0, DBeaverIcons.getImage(cat.getIcon() == null ? DBIcon.TREE_TASK : cat.getIcon()));
+            item.setText(1, CommonUtils.notEmpty(cat.getDescription()));
             item.setData(cat);
             addTaskCategories(item, cat.getChildren());
             addTaskTypes(item, cat);
@@ -243,30 +263,64 @@ class TaskConfigurationWizardPageTask extends ActiveWizardPage<TaskConfiguration
         DBTTaskType[] taskTypes = category.getTaskTypes();
         Arrays.sort(taskTypes, Comparator.comparing(DBTTaskType::getName));
         for (DBTTaskType type : taskTypes) {
+            if (!isTaskTypeApplicable(type)) {
+                continue;
+            }
+
             TreeItem item = new TreeItem(parentItem, SWT.NONE);
-            item.setText(type.getName());
+            item.setText(0, type.getName());
+            item.setText(1, CommonUtils.notEmpty(type.getDescription()));
             if (type.getIcon() != null) {
-                item.setImage(DBeaverIcons.getImage(type.getIcon()));
+                item.setImage(0, DBeaverIcons.getImage(type.getIcon()));
             }
             item.setData(type);
         }
     }
 
+    private boolean isTaskCategoryApplicable(DBTTaskCategory category) {
+        if (!filterTaskTypes) {
+            return true;
+        }
+        for (DBTTaskCategory child : category.getChildren()) {
+            if (isTaskCategoryApplicable(child)) {
+                return true;
+            }
+        }
+        for (DBTTaskType child : category.getTaskTypes()) {
+            if (isTaskTypeApplicable(child)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isTaskTypeApplicable(DBTTaskType type) {
+        if (!filterTaskTypes || selectedProject == null || !selectedProject.isRegistryLoaded()) {
+            return true;
+        }
+        for (DBPDataSourceContainer ds : selectedProject.getDataSourceRegistry().getDataSources()) {
+            if (type.isDriverApplicable(ds.getDriver())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     @Override
     protected boolean determinePageCompletion() {
         if (CommonUtils.isEmpty(taskName)) {
-            setErrorMessage("Enter task name (unique)");
+            setErrorMessage(TaskUIMessages.task_configuration_wizard_page_task_error_message_enter_task_name);
             return false;
         }
         if (task == null) {
             DBTTask task2 = selectedProject.getTaskManager().getTaskByName(taskName);
             if (task2 != null) {
-                setErrorMessage("Task '" + taskName + "' already exists in project '" + selectedProject.getName() + "'");
+                setErrorMessage(NLS.bind(TaskUIMessages.task_configuration_wizard_page_task_already_exists, taskName, selectedProject.getName()));
                 return false;
             }
         }
         if (selectedTaskType == null) {
-            setErrorMessage("Enter task type");
+            setErrorMessage(TaskUIMessages.task_configuration_wizard_page_task_enter_type);
             return false;
         }
         setErrorMessage(null);

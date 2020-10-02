@@ -19,6 +19,7 @@ package org.jkiss.dbeaver.model.impl.data.transformers;
 import org.jkiss.code.NotNull;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.ModelPreferences;
+import org.jkiss.dbeaver.model.DBPDataKind;
 import org.jkiss.dbeaver.model.DBUtils;
 import org.jkiss.dbeaver.model.data.*;
 import org.jkiss.dbeaver.model.exec.DBCSession;
@@ -35,6 +36,8 @@ import java.util.Map;
  * Transforms attribute of map type into hierarchy of attributes
  */
 public class MapAttributeTransformer implements DBDAttributeTransformer {
+
+    private static final boolean FILTER_SIMPLE_COLLECTIONS = false;
 
     @Override
     public void transformAttribute(@NotNull DBCSession session, @NotNull DBDAttributeBinding attribute, @NotNull List<Object[]> rows, @NotNull Map<String, Object> options) throws DBException {
@@ -56,6 +59,9 @@ public class MapAttributeTransformer implements DBDAttributeTransformer {
                 DBDCollection collection = (DBDCollection) value;
                 if (collection.getItemCount() > 0) {
                     value = collection.getItem(0);
+                } else {
+                    // Skip empty collections - we can't get any info out of them
+                    continue;
                 }
             }
 
@@ -130,9 +136,23 @@ public class MapAttributeTransformer implements DBDAttributeTransformer {
                         continue;
                     }
                     fakeRow[nestedBinding.getOrdinalPosition()] = values[i];
+                    nestedBinding.lateBinding(session, fakeRows);
                 }
+            } else {
+                nestedBinding.lateBinding(session, fakeRows);
             }
-            nestedBinding.lateBinding(session, fakeRows);
+        }
+
+        if (FILTER_SIMPLE_COLLECTIONS) {
+            // Remove empty collection attributes from nested bindings
+            // They can't be used anyway
+            nestedBindings.removeIf(
+                attribute -> {
+                    if (attribute.getDataKind() == DBPDataKind.ARRAY && CommonUtils.isEmpty(attribute.getNestedBindings())) {
+                        return true;
+                    }
+                    return false;
+                });
         }
 
         if (!nestedBindings.isEmpty()) {

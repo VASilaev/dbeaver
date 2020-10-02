@@ -32,7 +32,6 @@ import org.jkiss.dbeaver.model.connection.DBPDriver;
 import org.jkiss.dbeaver.model.exec.*;
 import org.jkiss.dbeaver.model.exec.jdbc.*;
 import org.jkiss.dbeaver.model.exec.plan.DBCQueryPlanner;
-import org.jkiss.dbeaver.model.impl.auth.DBAAuthDatabaseNative;
 import org.jkiss.dbeaver.model.impl.jdbc.JDBCDataSource;
 import org.jkiss.dbeaver.model.impl.jdbc.JDBCExecutionContext;
 import org.jkiss.dbeaver.model.impl.jdbc.JDBCRemoteInstance;
@@ -42,7 +41,6 @@ import org.jkiss.dbeaver.model.impl.jdbc.cache.JDBCStructCache;
 import org.jkiss.dbeaver.model.meta.Association;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.sql.SQLConstants;
-import org.jkiss.dbeaver.model.sql.SQLQueryResult;
 import org.jkiss.dbeaver.model.sql.SQLState;
 import org.jkiss.dbeaver.model.struct.DBSDataType;
 import org.jkiss.dbeaver.model.struct.DBSObject;
@@ -63,7 +61,7 @@ import java.util.regex.Pattern;
 /**
  * GenericDataSource
  */
-public class OracleDataSource extends JDBCDataSource implements IAdaptable {
+public class OracleDataSource extends JDBCDataSource implements DBPObjectStatisticsCollector, IAdaptable {
     private static final Log log = Log.getLog(OracleDataSource.class);
 
     final public SchemaCache schemaCache = new SchemaCache();
@@ -80,6 +78,7 @@ public class OracleDataSource extends JDBCDataSource implements IAdaptable {
     private String planTableName;
     private boolean useRuleHint;
     private boolean resolveGeometryAsStruct = true;
+    private boolean hasStatistics;
 
     private final Map<String, Boolean> availableViews = new HashMap<>();
 
@@ -247,16 +246,10 @@ public class OracleDataSource extends JDBCDataSource implements IAdaptable {
                         log.warn("Can't set session territory", e);
                     }
                 }
-                String nlsDateFormat = connectionInfo.getProviderProperty(OracleConstants.PROP_SESSION_NLS_DATE_FORMAT);
-                if (nlsDateFormat != null) {
-                    try {
-                        JDBCUtils.executeSQL(
-                            session,
-                            "ALTER SESSION SET NLS_DATE_FORMAT='" + nlsDateFormat + "'");
-                    } catch (Throwable e) {
-                        log.warn("Can't set session NLS date format", e);
-                    }
-                }
+                setNLSParameter(session, connectionInfo, "NLS_DATE_FORMAT", OracleConstants.PROP_SESSION_NLS_DATE_FORMAT);
+                setNLSParameter(session, connectionInfo, "NLS_TIMESTAMP_FORMAT", OracleConstants.PROP_SESSION_NLS_TIMESTAMP_FORMAT);
+                setNLSParameter(session, connectionInfo, "NLS_LENGTH_SEMANTICS", OracleConstants.PROP_SESSION_NLS_LENGTH_FORMAT);
+                setNLSParameter(session, connectionInfo, "NLS_CURRENCY", OracleConstants.PROP_SESSION_NLS_CURRENCY_FORMAT);
 
                 if (JDBCExecutionContext.TYPE_METADATA.equals(context.getContextName())) {
                     if (CommonUtils.toBoolean(connectionInfo.getProviderProperty(OracleConstants.PROP_USE_META_OPTIMIZER))) {
@@ -274,23 +267,21 @@ public class OracleDataSource extends JDBCDataSource implements IAdaptable {
         }
     }
 
-    public OracleSchema getDefaultSchema() {
-        return (OracleSchema) DBUtils.getDefaultContext(this, true).getContextDefaults().getDefaultSchema();
+    private void setNLSParameter(JDBCSession session, DBPConnectionConfiguration connectionInfo, String oraNlsName, String paramName) {
+        String paramValue = connectionInfo.getProviderProperty(paramName);
+        if (!CommonUtils.isEmpty(paramValue)) {
+            try {
+                JDBCUtils.executeSQL(
+                    session,
+                    "ALTER SESSION SET "+ oraNlsName + "='" + paramValue + "'");
+            } catch (Throwable e) {
+                log.warn("Can not set session NLS parameter " + oraNlsName, e);
+            }
+        }
     }
 
-    @Override
-    protected String getConnectionUserName(@NotNull DBPConnectionConfiguration connectionInfo) {
-        String userName = connectionInfo.getUserName();
-        String authModelId = connectionInfo.getAuthModelId();
-        if (!CommonUtils.isEmpty(authModelId) && !DBAAuthDatabaseNative.ID.equals(authModelId)) {
-            return userName;
-        }
-        // FIXME: left for backward compatibility. Replaced by auth model. Remove in future.
-        if (!CommonUtils.isEmpty(userName) && userName.contains(" AS ")) {
-            return userName;
-        }
-        final String role = connectionInfo.getProviderProperty(OracleConstants.PROP_INTERNAL_LOGON);
-        return role == null ? userName : userName + " AS " + role;
+    public OracleSchema getDefaultSchema() {
+        return (OracleSchema) DBUtils.getDefaultContext(this, true).getContextDefaults().getDefaultSchema();
     }
 
     @Override
@@ -301,8 +292,13 @@ public class OracleDataSource extends JDBCDataSource implements IAdaptable {
     @Override
     public ErrorType discoverErrorType(@NotNull Throwable error) {
         Throwable rootCause = GeneralUtils.getRootCause(error);
-        if (rootCause instanceof SQLException && ((SQLException) rootCause).getErrorCode() == OracleConstants.EC_FEATURE_NOT_SUPPORTED) {
-            return ErrorType.FEATURE_UNSUPPORTED;
+        if (rootCause instanceof SQLException) {
+            switch (((SQLException) rootCause).getErrorCode()) {
+                case OracleConstants.EC_NO_RESULTSET_AVAILABLE:
+                    return ErrorType.RESULT_SET_MISSING;
+                case OracleConstants.EC_FEATURE_NOT_SUPPORTED:
+                    return ErrorType.FEATURE_UNSUPPORTED;
+            }
         }
         return super.discoverErrorType(error);
     }
@@ -344,7 +340,8 @@ public class OracleDataSource extends JDBCDataSource implements IAdaptable {
         if (publicSchema != null && publicSchema.getName().equals(name)) {
             return publicSchema;
         }
-        return schemaCache.getObject(monitor, this, name);
+        // Schema cache may be null during DataSource initialization
+        return schemaCache == null ? null : schemaCache.getObject(monitor, this, name);
     }
 
     @Association
@@ -485,8 +482,9 @@ public class OracleDataSource extends JDBCDataSource implements IAdaptable {
         return getSchema(monitor, childName);
     }
 
+    @NotNull
     @Override
-    public Class<? extends OracleSchema> getChildType(@NotNull DBRProgressMonitor monitor)
+    public Class<? extends OracleSchema> getPrimaryChildType(@NotNull DBRProgressMonitor monitor)
         throws DBException {
         return OracleSchema.class;
     }
@@ -732,6 +730,42 @@ public class OracleDataSource extends JDBCDataSource implements IAdaptable {
         return null;
     }
 
+    ///////////////////////////////////////////////
+    // Statistics
+
+    @Override
+    public boolean isStatisticsCollected() {
+        return hasStatistics;
+    }
+
+    @Override
+    public void collectObjectStatistics(DBRProgressMonitor monitor, boolean totalSizeOnly, boolean forceRefresh) throws DBException {
+        if (hasStatistics && !forceRefresh) {
+            return;
+        }
+        try (final JDBCSession session = DBUtils.openMetaSession(monitor, this, "Load tablespace '" + getName() + "' statistics")) {
+            // Tablespace stats
+            try (JDBCStatement dbStat = session.createStatement()) {
+                try (JDBCResultSet dbResult = dbStat.executeQuery("SELECT TS.TABLESPACE_NAME,SUM(F.BYTES) AVAILABLE_SPACE,SUM(S.BYTES) USED_SPACE \n" +
+                    "FROM SYS.DBA_TABLESPACES TS,DBA_DATA_FILES F,DBA_SEGMENTS S\n" +
+                    "WHERE F.TABLESPACE_NAME(+)=TS.TABLESPACE_NAME AND S.TABLESPACE_NAME(+)=TS.TABLESPACE_NAME\n" +
+                    "GROUP BY TS.TABLESPACE_NAME")) {
+                    while (dbResult.next()) {
+                        String tsName = dbResult.getString(1);
+                        OracleTablespace tablespace = tablespaceCache.getObject(monitor, getDataSource(), tsName);
+                        if (tablespace != null) {
+                            tablespace.fetchSizes(dbResult);
+                        }
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            throw new DBException("Can't read tablespace statistics", e, getDataSource());
+        } finally {
+            hasStatistics = true;
+        }
+    }
+
     private class OracleOutputReader implements DBCServerOutputReader {
         @Override
         public boolean isServerOutputEnabled() {
@@ -755,7 +789,7 @@ public class OracleDataSource extends JDBCDataSource implements IAdaptable {
         }
 
         @Override
-        public void readServerOutput(@NotNull DBRProgressMonitor monitor, @NotNull DBCExecutionContext context, @Nullable SQLQueryResult queryResult, @Nullable DBCStatement statement, @NotNull PrintWriter output) throws DBCException {
+        public void readServerOutput(@NotNull DBRProgressMonitor monitor, @NotNull DBCExecutionContext context, @Nullable DBCExecutionResult executionResult, @Nullable DBCStatement statement, @NotNull PrintWriter output) throws DBCException {
             try (JDBCSession session = (JDBCSession) context.openSession(monitor, DBCExecutionPurpose.UTIL, "Read DBMS output")) {
                 try (CallableStatement getLineProc = session.getOriginal().prepareCall("{CALL DBMS_OUTPUT.GET_LINE(?, ?)}")) {
                     getLineProc.registerOutParameter(1, java.sql.Types.VARCHAR);

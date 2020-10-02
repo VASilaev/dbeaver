@@ -34,7 +34,7 @@ import org.jkiss.dbeaver.registry.DataSourceProviderRegistry;
 import org.jkiss.dbeaver.registry.driver.DriverDescriptor;
 import org.jkiss.dbeaver.runtime.DBWorkbench;
 import org.jkiss.dbeaver.ui.UIUtils;
-import org.jkiss.dbeaver.ui.navigator.dialogs.SelectObjectDialog;
+import org.jkiss.dbeaver.ui.navigator.dialogs.ObjectListDialog;
 import org.jkiss.utils.CommonUtils;
 
 import java.util.ArrayList;
@@ -134,6 +134,9 @@ public abstract class ConfigImportWizard extends Wizard implements IImportWizard
             driver.setConnectionProperties(driverInfo.getProperties());
             driver.setDescription(driverInfo.getDescription());
             driver.setDriverDefaultPort(driverInfo.getDefaultPort());
+            driver.setDriverDefaultDatabase(driverInfo.getDefaultDatabase());
+            driver.setDriverDefaultServer(driverInfo.getDefaultServer());
+            driver.setDriverDefaultUser(driverInfo.getDefaultUser());
             for (String path : driverInfo.getLibraries()) {
                 driver.addDriverLibrary(path, DBPDriverLibrary.FileType.jar);
             }
@@ -146,7 +149,7 @@ public abstract class ConfigImportWizard extends Wizard implements IImportWizard
             connectionInfo.setDriver(driver);
         } else {
             // Let user to choose correct driver
-            driver = SelectObjectDialog.selectObject(
+            driver = ObjectListDialog.selectObject(
                 getShell(), "Choose driver for connection '" + connectionInfo.getAlias() + "'", "ImportDriverSelector", matchedDrivers);
             if (driver == null) {
                 return false;

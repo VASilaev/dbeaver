@@ -94,7 +94,7 @@ public class SQLScriptParser
                     } catch (BadLocationException e) {
                         log.debug(e);
                     }
-                } else if (useBlankLines && token.isWhitespace() && tokenLength >= 1) {
+                } else if (useBlankLines && token.isWhitespace() && tokenLength > 1) {
                     // Check for blank line delimiter
                     if (lastTokenLineFeeds + countLineFeeds(document, tokenOffset, tokenLength) >= 2) {
                         isDelimiter = true;
@@ -120,8 +120,12 @@ public class SQLScriptParser
                     // This is a tricky thing.
                     // In some dialects block end looks like END CASE, END LOOP. It is parsed as
                     // Block end followed by block begin (as CASE and LOOP are block begin tokens)
-                    // So let's ignore block begin if previos token was block end and there were no delimtiers.
+                    // So let's ignore block begin if previos token was block end and there were no delimiters.
                     tokenType = SQLTokenType.T_UNKNOWN;
+                }
+                if (tokenType == SQLTokenType.T_DELIMITER && prevNotEmptyTokenType == SQLTokenType.T_BLOCK_BEGIN) {
+                    // Another trick. If BEGIN follows with delimiter then it is not a block (#7821)
+                    if (curBlock != null) curBlock = curBlock.parent;
                 }
 
                 if (tokenType == SQLTokenType.T_BLOCK_HEADER) {
@@ -173,7 +177,7 @@ public class SQLScriptParser
                         }
                     }
                 } else if (isDelimiter && curBlock != null) {
-                    // Delimiter in some brackets - ignore it
+                    // Delimiter in some brackets or inside block. Ignore it.
                     continue;
                 } else if (tokenType == SQLTokenType.T_SET_DELIMITER || tokenType == SQLTokenType.T_CONTROL) {
                     isDelimiter = true;
@@ -231,7 +235,7 @@ public class SQLScriptParser
                         return null;
                     }
                 }
-                if (hasValuableTokens && (token.isEOF() || (isDelimiter && tokenOffset >= currentPos) || tokenOffset > endPos)) {
+                if (hasValuableTokens && (token.isEOF() || (isDelimiter && tokenOffset + tokenLength >= currentPos) || tokenOffset > endPos)) {
                     if (tokenOffset > endPos) {
                         tokenOffset = endPos;
                     }
@@ -373,7 +377,8 @@ public class SQLScriptParser
         int lastPos = currentPos >= docLength ? docLength - 1 : currentPos;
 
         try {
-            int currentLine = document.getLineOfOffset(currentPos);
+            int originalPosLine = document.getLineOfOffset(currentPos);
+            int currentLine = originalPosLine;
             if (useBlankLines) {
                 if (TextUtils.isEmptyLine(document, currentLine)) {
                     if (currentLine == 0) {
@@ -431,8 +436,37 @@ public class SQLScriptParser
                 startPos = document.getLineOffset(firstLine);
             }
 
-            // Move currentPos at line begin
-            currentPos = lineOffset;
+            /*if (currentLine != originalPosLine) {
+                // Move currentPos before last delimiter
+                currentPos = lineOffset;
+            } else */
+            {
+                // Move currentPos at line begin
+                IRegion region = document.getLineInformation(currentLine);
+                if (region.getLength() > 0) {
+                    int offsetFromLineStart = currentPos - region.getOffset();
+                    String lineStr = document.get(region.getOffset(), offsetFromLineStart);
+                    for (String delim : statementDelimiters) {
+                        int delimIndex = lineStr.lastIndexOf(delim);
+                        if (delimIndex != -1) {
+                            // There is a dlimiter in current line
+                            // Move pos before it if there are no valuable chars between delimiter and cursor position
+                            boolean hasValuableChars = false;
+                            for (int i = region.getOffset() + delimIndex + delim.length(); i < currentPos; i++) {
+                                if (!Character.isWhitespace(document.getChar(i))) {
+                                    hasValuableChars = true;
+                                    break;
+                                }
+                            }
+                            if (!hasValuableChars) {
+                                currentPos = region.getOffset() + delimIndex - 1;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
         } catch (BadLocationException e) {
             log.warn(e);
         }

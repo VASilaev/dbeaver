@@ -22,5 +22,11 @@ public class PostgreSQLTasks {
     public static final String TASK_DATABASE_BACKUP = "pgDatabaseBackup";
     public static final String TASK_DATABASE_RESTORE = "pgDatabaseRestore";
     public static final String TASK_SCRIPT_EXECUTE = "pgScriptExecute";
+    public static final String TASK_MVIEW_REFRESH = "pgToolRefreshMView";
+    public static final String TASK_DATABASE_ANALYZE = "pgToolDatabaseAnalyze";
+    public static final String TASK_TABLE_ANALYZE = "pgToolTableAnalyze";
+    public static final String TASK_TABLE_TRUNCATE = "pgToolTableTruncate";
+    public static final String TASK_DATABASE_VACUUM = "pgToolDatabaseVacuum";
+    public static final String TASK_TABLE_VACUUM = "pgToolTableVacuum";
 
 }

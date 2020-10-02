@@ -38,7 +38,6 @@ import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.struct.DBSEntity;
 import org.jkiss.dbeaver.tools.transfer.stream.IStreamDataExporterSite;
 import org.jkiss.dbeaver.tools.transfer.stream.exporter.StreamExporterAbstract;
-import org.jkiss.dbeaver.ui.controls.resultset.ResultSetPreferences;
 import org.jkiss.dbeaver.utils.ContentUtils;
 import org.jkiss.utils.CommonUtils;
 
@@ -107,8 +106,8 @@ public class DataExporterXLSX extends StreamExporterAbstract {
 
     private HashMap<Object, Worksheet> worksheets;
 
-    public static Map<Object, Object> getDefaultProperties() {
-        Map<Object, Object> properties = new HashMap<>();
+    public static Map<String, Object> getDefaultProperties() {
+        Map<String, Object> properties = new HashMap<>();
         properties.put(DataExporterXLSX.PROP_ROWNUMBER, false);
         properties.put(DataExporterXLSX.PROP_BORDER, "THIN");
         properties.put(DataExporterXLSX.PROP_HEADER, true);
@@ -126,7 +125,7 @@ public class DataExporterXLSX extends StreamExporterAbstract {
 
     @Override
     public void init(IStreamDataExporterSite site) throws DBException {
-        Map<Object, Object> properties = site.getProperties();
+        Map<String, Object> properties = site.getProperties();
         Object nullStringProp = properties.get(PROP_NULL_STRING);
         nullString = nullStringProp == null ? null : nullStringProp.toString();
 
@@ -324,8 +323,9 @@ public class DataExporterXLSX extends StreamExporterAbstract {
     public void exportHeader(DBCSession session) {
 
         columns = getSite().getAttributes();
+        // FIXME: we want to avoid UI component dependency. But still want to use its preferences
         showDescription = session.getDataSource().getContainer().getPreferenceStore()
-                .getBoolean(ResultSetPreferences.RESULT_SET_SHOW_DESCRIPTION);
+                .getBoolean("resultset.show.columnDescription");
     }
 
     private void printHeader(DBCResultSet resultSet, Worksheet wsh) throws DBException {

@@ -151,7 +151,7 @@ public class EditConstraintPage extends AttributesSelectorPage {
 
         final Text nameText = entity != null ? UIUtils.createLabelText(panel, EditorsMessages.dialog_struct_edit_constrain_label_name, constraintName) : null;
         if (nameText != null) {
-            nameText.addModifyListener(e -> constraintName = nameText.getText());
+            nameText.addModifyListener(e -> constraintName = nameText.getText().trim());
         }
 
         UIUtils.createControlLabel(panel, EditorsMessages.dialog_struct_edit_constrain_label_type);
@@ -206,6 +206,7 @@ public class EditConstraintPage extends AttributesSelectorPage {
                 public void widgetSelected(SelectionEvent e) {
                     useAllColumns = useAllColumnsCheck.getSelection();
                     columnsTable.setEnabled(!useAllColumns);
+                    updatePageState();
                 }
             });
         }
@@ -249,7 +250,7 @@ public class EditConstraintPage extends AttributesSelectorPage {
         if (selectedConstraintType.isCustom()) {
             return !CommonUtils.isEmpty(constraintExpression);
         } else {
-            return super.isPageComplete();
+            return useAllColumns || super.isPageComplete();
         }
     }
 

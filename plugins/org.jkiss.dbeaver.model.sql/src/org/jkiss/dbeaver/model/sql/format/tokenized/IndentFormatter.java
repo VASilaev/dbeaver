@@ -30,6 +30,7 @@ class IndentFormatter {
     private final String[] blockHeaderStrings;
 
     private static final String[] JOIN_BEGIN = {"LEFT", "RIGHT", "INNER", "OUTER", "FULL", "CROSS", "JOIN"};
+    private static final String[] DML_KEYWORD = { "SELECT", "UPDATE", "INSERT", "DELETE" };
 
     IndentFormatter(SQLFormatterConfiguration formatterCfg, boolean isCompact) {
         this.formatterCfg = formatterCfg;
@@ -72,6 +73,7 @@ class IndentFormatter {
             case ",":
                 if (!isCompact) {
                     /*if (bracketsDepth <= 0 || "SELECT".equals(getPrevDMLKeyword(argList, index)))*/
+                    if(bracketsDepth <= 0 || functionBracket.size() == 0 || ("SELECT".equalsIgnoreCase(getPrevDMLKeyword(argList, index)) && bracketsDepth > 0 && bracketsDepth == indent))
                     {
                         boolean lfBeforeComma = formatterCfg.getPreferenceStore().getBoolean(ModelPreferences.SQL_FORMAT_LF_BEFORE_COMMA);
                         result += insertReturnAndIndent(
@@ -107,7 +109,7 @@ class IndentFormatter {
                 result += insertReturnAndIndent(argList, index + 1, indent);
             } else if (SQLUtils.isBlockEndKeyword(dialect, tokenString)) {
                 indent--;
-                result += insertReturnAndIndent(argList, index, indent - 1);
+                result += insertReturnAndIndent(argList, index, indent);
             } else switch (tokenString) {
                 case "CREATE":
                     if (!isCompact) {
@@ -147,12 +149,18 @@ class IndentFormatter {
                 case "CASE":  //$NON-NLS-1$
                     if (!isCompact) {
                         result += insertReturnAndIndent(argList, index - 1, indent);
-                        if (!"WHEN".equals(getNextKeyword(argList, index))) {
+                        if ("WHEN".equalsIgnoreCase(getNextKeyword(argList, index))) {
                             indent++;
                             result += insertReturnAndIndent(argList, index + 1, indent);
                         }
                     }
                     break;
+                case "END": // CASE ... END
+                    if (!isCompact) {
+	                    indent--;
+	                    result += insertReturnAndIndent(argList, index, indent);
+                    }
+                	break;
                 case "FROM":
                 case "WHERE":
                 case "START WITH":
@@ -189,7 +197,7 @@ class IndentFormatter {
                         break;
                     }
                 case "WHEN":
-                    if ("CASE".equals(getPrevKeyword(argList, index))) {
+                    if ("CASE".equalsIgnoreCase(getPrevKeyword(argList, index))) {
                         break;
                     }
                 case "ELSE":  //$NON-NLS-1$
@@ -435,6 +443,18 @@ class IndentFormatter {
             return null;
         }
         return argList.get(ki).getString();
+    }
+
+    private static String getPrevDMLKeyword(List<FormatterToken> argList, int index) {
+        for (int i = index - 1; i >= 0; i--) {
+            FormatterToken token = argList.get(i);
+            if (token.getType() == TokenType.KEYWORD) {
+                if (ArrayUtils.contains(DML_KEYWORD, token.getString().toUpperCase(Locale.ENGLISH))) {
+                    return token.getString();
+                }
+            }
+        }
+        return null;
     }
 
 }

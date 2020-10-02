@@ -17,8 +17,6 @@
 package org.jkiss.dbeaver.ext.postgresql.model.impls;
 
 import org.jkiss.dbeaver.ext.postgresql.model.PostgreDataSource;
-import org.jkiss.dbeaver.ext.postgresql.model.PostgreTableBase;
-import org.jkiss.dbeaver.ext.postgresql.model.PostgreTableRegular;
 
 /**
  * PostgreServerPostgreSQL
@@ -32,8 +30,27 @@ public class PostgreServerPostgreSQL extends PostgreServerExtensionBase {
     }
 
     @Override
+    public boolean supportsEntityMetadataInResults() {
+        return true;
+    }
+
+    @Override
     public String getServerTypeName() {
         return "PostgreSQL";
     }
-}
 
+    @Override
+    public boolean supportsPGConstraintExpressionColumn() {
+        return !dataSource.isServerVersionAtLeast(12, 0);
+    }
+
+    @Override
+    public boolean supportsHasOidsColumn() {
+        return !dataSource.isServerVersionAtLeast(12, 0);
+    }
+
+    @Override
+    public boolean supportsDatabaseSize() {
+        return true;
+    }
+}

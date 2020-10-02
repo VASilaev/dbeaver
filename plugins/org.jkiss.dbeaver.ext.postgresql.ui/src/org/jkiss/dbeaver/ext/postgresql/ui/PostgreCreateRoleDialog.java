@@ -26,7 +26,7 @@ import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Shell;
 import org.eclipse.swt.widgets.Text;
 import org.jkiss.dbeaver.ext.postgresql.PostgreMessages;
-import org.jkiss.dbeaver.ext.postgresql.model.*;
+import org.jkiss.dbeaver.ext.postgresql.model.PostgreRole;
 import org.jkiss.dbeaver.ui.UIUtils;
 import org.jkiss.dbeaver.ui.dialogs.BaseDialog;
 
@@ -54,7 +54,7 @@ public class PostgreCreateRoleDialog extends BaseDialog
 
         final Text nameText = UIUtils.createLabelText(groupGeneral, PostgreMessages.dialog_create_role_label_role_name, ""); //$NON-NLS-2$
         nameText.addModifyListener(e -> {
-            name = nameText.getText();
+            name = nameText.getText().trim();
             getButton(IDialogConstants.OK_ID).setEnabled(!name.isEmpty());
         });
 

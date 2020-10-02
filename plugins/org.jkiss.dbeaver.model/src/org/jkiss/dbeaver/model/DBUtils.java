@@ -146,7 +146,7 @@ public final class DBUtils {
         // Check for keyword conflict
         final DBPKeywordType keywordType = sqlDialect.getKeywordType(str);
         boolean hasBadChars = quoteAlways ||
-            ((keywordType == DBPKeywordType.KEYWORD || keywordType == DBPKeywordType.TYPE) &&
+            ((keywordType == DBPKeywordType.KEYWORD || keywordType == DBPKeywordType.TYPE || keywordType == DBPKeywordType.OTHER) &&
             sqlDialect.isQuoteReservedWords());
 
         if (!hasBadChars && !str.isEmpty()) {
@@ -318,7 +318,7 @@ public final class DBUtils {
         throws DBException
     {
         if (!CommonUtils.isEmpty(catalogName)) {
-            Class<? extends DBSObject> childType = rootSC.getChildType(monitor);
+            Class<? extends DBSObject> childType = rootSC.getPrimaryChildType(monitor);
             if (DBSSchema.class.isAssignableFrom(childType) || DBSEntity.class.isAssignableFrom(childType)) {
                 // Datasource supports only schemas. Do not use catalog
                 catalogName = null;
@@ -589,11 +589,7 @@ public final class DBUtils {
         DBPDataSourceContainer dataSourceContainer = project.getDataSourceRegistry().getDataSource(names[0]);
         if (dataSourceContainer == null) {
             log.debug("Can't find datasource '" + names[0] + "' in project " + project.getName());
-            dataSourceContainer = findDataSource(names[0]);
-            if (dataSourceContainer == null) {
-                log.debug("Can't find datasource '" + names[0] + "' in any project");
-                return null;
-            }
+            return null;
         }
         if (names.length == 1) {
             return dataSourceContainer;
@@ -611,6 +607,7 @@ public final class DBUtils {
             return null;
         }
         DBSObjectContainer sc = DBUtils.getAdapter(DBSObjectContainer.class, dataSource);
+        DBSEntity finalEntity = null;
         if (sc != null) {
             for (int i = 1; i < names.length - 1; i++) {
                 String name = names[i];
@@ -621,20 +618,47 @@ public final class DBUtils {
                 }
                 if (child instanceof DBSObjectContainer) {
                     sc = (DBSObjectContainer) child;
+                } else if (child instanceof DBSEntity && i == names.length - 2) {
+                    sc = null;
+                    finalEntity = (DBSEntity) child;
+                    break;
                 } else {
-                    log.debug("Child object '" + name + "' is not a container");
+                    log.debug("Child object '" + name + "' is not a container or entity");
                     return null;
                 }
             }
         }
+        String objectName = names[names.length - 1];
         if (sc != null) {
-            String objectName = names[names.length - 1];
             DBSObject object = sc.getChild(monitor, objectName);
             if (object == null) {
                 log.debug("Child object '" + objectName + "' not found in container " + DBUtils.getObjectFullName(sc, DBPEvaluationContext.UI));
-                return null;
+                throw new DBException("Child object '" + objectName + "' not found in container " + DBUtils.getObjectFullName(sc, DBPEvaluationContext.UI));
             }
             return object;
+        } else if (finalEntity != null) {
+            DBSEntityAttribute attribute = finalEntity.getAttribute(monitor, objectName);
+            if (attribute != null) {
+                return attribute;
+            }
+            if (finalEntity instanceof DBSTable) {
+                List<? extends DBSTrigger> triggers = ((DBSTable) finalEntity).getTriggers(monitor);
+                if (triggers != null) {
+                    DBSTrigger trigger = DBUtils.findObject(triggers, objectName);
+                    if (trigger != null) {
+                        return trigger;
+                    }
+                }
+                Collection<? extends DBSTableIndex> indices = ((DBSTable) finalEntity).getIndexes(monitor);
+                if (indices != null) {
+                    DBSTableIndex index = DBUtils.findObject(indices, objectName);
+                    if (index != null) {
+                        return index;
+                    }
+                }
+                log.debug("Object '" + objectName + "' not found in entity " + DBUtils.getObjectFullName(finalEntity, DBPEvaluationContext.UI));
+                return null;
+            }
         }
         return null;
     }
@@ -818,7 +842,7 @@ public final class DBUtils {
     }
 
     @NotNull
-    public static DBDValueHandler findValueHandler(@Nullable DBPDataSource dataSource, @Nullable DBDPreferences preferences, @NotNull DBSTypedObject column)
+    public static DBDValueHandler findValueHandler(@Nullable DBPDataSource dataSource, @Nullable DBDFormatSettings preferences, @NotNull DBSTypedObject column)
     {
         DBDValueHandler valueHandler = null;
         // Get handler provider from datasource
@@ -969,7 +993,7 @@ public final class DBUtils {
     }
 
     @NotNull
-    public static Collection<? extends DBSEntityAttribute> getBestTableIdentifier(@NotNull DBRProgressMonitor monitor, @NotNull DBSEntity entity)
+    public static List<? extends DBSEntityAttribute> getBestTableIdentifier(@NotNull DBRProgressMonitor monitor, @NotNull DBSEntity entity)
         throws DBException
     {
         if (entity instanceof DBSTable && ((DBSTable) entity).isView()) {
@@ -980,7 +1004,7 @@ public final class DBUtils {
         }
 
         List<DBSEntityConstraint> identifiers = new ArrayList<>();
-        List<DBSEntityConstraint> nonIdentifyingConstraints = null;
+        //List<DBSEntityConstraint> nonIdentifyingConstraints = null;
 
         // Check indexes
         if (entity instanceof DBSTable) {
@@ -1005,10 +1029,10 @@ public final class DBUtils {
                 for (DBSEntityConstraint constraint : uniqueKeys) {
                     if (isIdentifierConstraint(monitor, constraint)) {
                         identifiers.add(constraint);
-                    } else {
+                    }/* else {
                         if (nonIdentifyingConstraints == null) nonIdentifyingConstraints = new ArrayList<>();
                         nonIdentifyingConstraints.add(constraint);
-                    }
+                    }*/
                 }
             }
         }
@@ -1030,9 +1054,9 @@ public final class DBUtils {
                 getEntityAttributes(monitor, (DBSEntityReferrer)uniqueId)
                 : Collections.<DBSTableColumn>emptyList();
         } else {
-            if (nonIdentifyingConstraints != null) {
-                return getEntityAttributes(monitor, (DBSEntityReferrer)nonIdentifyingConstraints.get(0));
-            }
+//            if (nonIdentifyingConstraints != null) {
+//                return getEntityAttributes(monitor, (DBSEntityReferrer)nonIdentifyingConstraints.get(0));
+//            }
             return Collections.emptyList();
         }
     }
@@ -1063,8 +1087,10 @@ public final class DBUtils {
                 }
                 for (DBSEntityAttributeRef col : attrs) {
                     if (col.getAttribute() == null || !col.getAttribute().isRequired()) {
-                        // Do not use constraints with NULL columns (because they are not actually unique: #424)
-                        return false;
+                        if (!constraint.getDataSource().getInfo().supportsNullableUniqueConstraints()) {
+                            // Do not use constraints with NULL columns (because they are not actually unique: #424)
+                            return false;
+                        }
                     }
                 }
                 return true;
@@ -1463,7 +1489,7 @@ public final class DBUtils {
         return dataTypeProvider.getLocalDataType(fullTypeName);
     }
 
-    public static DBPObject getPublicObject(@Nullable DBPObject object)
+    public static DBSObject getPublicObject(@Nullable DBSObject object)
     {
         if (object instanceof DBPDataSourceContainer) {
             return ((DBPDataSourceContainer) object).getDataSource();
@@ -1663,7 +1689,7 @@ public final class DBUtils {
     @SuppressWarnings("unchecked")
     @NotNull
     public static <T extends DBCSession> T openUtilSession(@NotNull DBRProgressMonitor monitor, @NotNull DBSObject object, @NotNull String task) {
-        return (T) getDefaultContext(object, false).openSession(monitor, DBCExecutionPurpose.UTIL, task);
+        return (T) getOrOpenDefaultContext(object, false).openSession(monitor, DBCExecutionPurpose.UTIL, task);
     }
 
     @Nullable
@@ -1956,8 +1982,10 @@ public final class DBUtils {
     }
 
     /**
-     * Find data source in all available registries
+     * Find data source in all available registries.
+     * Deprecated. Triggering all projects open may cause issues (especially when they are secured)
      */
+    @Deprecated
     public static DBPDataSourceContainer findDataSource(String dataSourceId) {
         DBPWorkspace workspace = DBWorkbench.getPlatform().getWorkspace();
         for (DBPProject project : workspace.getProjects()) {

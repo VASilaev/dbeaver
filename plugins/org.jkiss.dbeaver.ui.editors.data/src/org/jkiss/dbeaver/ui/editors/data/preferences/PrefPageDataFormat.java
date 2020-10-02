@@ -43,6 +43,7 @@ import org.jkiss.dbeaver.ui.dialogs.EnterNameDialog;
 import org.jkiss.dbeaver.ui.preferences.PreferenceStoreDelegate;
 import org.jkiss.dbeaver.ui.preferences.TargetPrefPage;
 import org.jkiss.dbeaver.ui.properties.PropertyTreeViewer;
+import org.jkiss.utils.CommonUtils;
 
 import java.util.List;
 import java.util.*;
@@ -52,7 +53,7 @@ import java.util.*;
  */
 public class PrefPageDataFormat extends TargetPrefPage
 {
-    static final Log log = Log.getLog(PrefPageDataFormat.class);
+    private static final Log log = Log.getLog(PrefPageDataFormat.class);
 
     public static final String PAGE_ID = "org.jkiss.dbeaver.preferences.main.dataformat"; //$NON-NLS-1$
 
@@ -68,11 +69,12 @@ public class PrefPageDataFormat extends TargetPrefPage
 
     private String profileName;
     private Locale profileLocale;
-    private Map<String, Map<Object, Object>> profileProperties = new HashMap<>();
+    private Map<String, Map<String, Object>> profileProperties = new HashMap<>();
     private Combo profilesCombo;
     private PropertySourceCustom propertySource;
     private Button datetimeNativeFormatCheck;
     private Button numericNativeFormatCheck;
+    private Button numericScientificFormatCheck;
 
     public PrefPageDataFormat()
     {
@@ -83,7 +85,12 @@ public class PrefPageDataFormat extends TargetPrefPage
     @Override
     protected boolean hasDataSourceSpecificOptions(DBPDataSourceContainer dataSourceDescriptor)
     {
-        return dataSourceDescriptor.getDataFormatterProfile().isOverridesParent();
+        DBPPreferenceStore store = dataSourceDescriptor.getPreferenceStore();
+        return
+            store.contains(ModelPreferences.RESULT_NATIVE_DATETIME_FORMAT) ||
+            store.contains(ModelPreferences.RESULT_NATIVE_NUMERIC_FORMAT) ||
+            store.contains(ModelPreferences.RESULT_SCIENTIFIC_NUMERIC_FORMAT) ||
+            dataSourceDescriptor.getDataFormatterProfile().isOverridesParent();
     }
 
     @Override
@@ -146,6 +153,13 @@ public class PrefPageDataFormat extends TargetPrefPage
 
             datetimeNativeFormatCheck = UIUtils.createCheckbox(settingsGroup, ResultSetMessages.pref_page_data_format_datetime_use_native_formatting, ResultSetMessages.pref_page_data_format_datetime_use_native_formatting_tip, false, 2);
             numericNativeFormatCheck = UIUtils.createCheckbox(settingsGroup, ResultSetMessages.pref_page_data_format_numeric_use_native_formatting, ResultSetMessages.pref_page_data_format_numeric_use_native_formatting_tip, false, 2);
+            numericScientificFormatCheck = UIUtils.createCheckbox(settingsGroup, ResultSetMessages.pref_page_data_format_numeric_use_scientific_notation, ResultSetMessages.pref_page_data_format_numeric_use_scientific_notation_tip, false, 2);
+            numericNativeFormatCheck.addSelectionListener(new SelectionAdapter() {
+                @Override
+                public void widgetSelected(SelectionEvent e) {
+                    numericScientificFormatCheck.setEnabled(numericNativeFormatCheck.getSelection());
+                }
+            });
         }
 
         // formats
@@ -226,7 +240,7 @@ public class PrefPageDataFormat extends TargetPrefPage
         profileLocale = formatterProfile.getLocale();
         profileProperties.clear();
         for (DataFormatterDescriptor dfd : formatterDescriptors) {
-            Map<Object, Object> formatterProps = formatterProfile.getFormatterProperties(dfd.getId());
+            Map<String, Object> formatterProps = formatterProfile.getFormatterProperties(dfd.getId());
             if (formatterProps != null) {
                 profileProperties.put(dfd.getId(), formatterProps);
             }
@@ -292,8 +306,8 @@ public class PrefPageDataFormat extends TargetPrefPage
             return;
         }
 
-        Map<Object,Object> formatterProps = profileProperties.get(formatterDescriptor.getId());
-        Map<Object, Object> defaultProps = formatterDescriptor.getSample().getDefaultProperties(localeSelector.getSelectedLocale());
+        Map<String,Object> formatterProps = profileProperties.get(formatterDescriptor.getId());
+        Map<String, Object> defaultProps = formatterDescriptor.getSample().getDefaultProperties(localeSelector.getSelectedLocale());
         propertySource = new PropertySourceCustom(
             formatterDescriptor.getProperties(),
             formatterProps);
@@ -311,9 +325,9 @@ public class PrefPageDataFormat extends TargetPrefPage
         try {
             DBDDataFormatter formatter = formatterDescriptor.createFormatter();
 
-            Map<Object, Object> defProps = formatterDescriptor.getSample().getDefaultProperties(profileLocale);
-            Map<Object, Object> props = profileProperties.get(formatterDescriptor.getId());
-            Map<Object, Object> formatterProps = new HashMap<>();
+            Map<String, Object> defProps = formatterDescriptor.getSample().getDefaultProperties(profileLocale);
+            Map<String, Object> props = profileProperties.get(formatterDescriptor.getId());
+            Map<String, Object> formatterProps = new HashMap<>();
             if (defProps != null && !defProps.isEmpty()) {
                 formatterProps.putAll(defProps);
             }
@@ -323,7 +337,7 @@ public class PrefPageDataFormat extends TargetPrefPage
             formatter.init(null, profileLocale, formatterProps);
 
             String sampleValue = formatter.formatValue(formatterDescriptor.getSample().getSampleValue());
-            sampleText.setText(sampleValue);
+            sampleText.setText(CommonUtils.notEmpty(sampleValue));
         } catch (Exception e) {
             log.warn("Can't render sample value", e); //$NON-NLS-1$
         }
@@ -335,7 +349,7 @@ public class PrefPageDataFormat extends TargetPrefPage
         if (formatterDescriptor == null) {
             return;
         }
-        Map<Object, Object> props = propertySource.getProperties();
+        Map<String, Object> props = propertySource.getPropertyValues();
         profileProperties.put(formatterDescriptor.getId(), props);
         reloadSample();
     }
@@ -354,6 +368,16 @@ public class PrefPageDataFormat extends TargetPrefPage
     }
 
     @Override
+    protected void performDefaults() {
+        DBPPreferenceStore targetPreferenceStore = getTargetPreferenceStore();
+        clearPreferences(targetPreferenceStore);
+        formatterProfile = null;
+        loadPreferences(targetPreferenceStore);
+        reloadSample();
+        super.performDefaults();
+    }
+
+    @Override
     protected void loadPreferences(DBPPreferenceStore store)
     {
         refreshProfileList();
@@ -362,6 +386,8 @@ public class PrefPageDataFormat extends TargetPrefPage
 
         datetimeNativeFormatCheck.setSelection(store.getBoolean(ModelPreferences.RESULT_NATIVE_DATETIME_FORMAT));
         numericNativeFormatCheck.setSelection(store.getBoolean(ModelPreferences.RESULT_NATIVE_NUMERIC_FORMAT));
+        numericScientificFormatCheck.setSelection(store.getBoolean(ModelPreferences.RESULT_SCIENTIFIC_NUMERIC_FORMAT));
+        numericScientificFormatCheck.setEnabled(numericNativeFormatCheck.getSelection());
     }
 
     @Override
@@ -377,6 +403,7 @@ public class PrefPageDataFormat extends TargetPrefPage
 
             store.setValue(ModelPreferences.RESULT_NATIVE_DATETIME_FORMAT, datetimeNativeFormatCheck.getSelection());
             store.setValue(ModelPreferences.RESULT_NATIVE_NUMERIC_FORMAT, numericNativeFormatCheck.getSelection());
+            store.setValue(ModelPreferences.RESULT_SCIENTIFIC_NUMERIC_FORMAT, numericScientificFormatCheck.getSelection());
         } catch (Exception e) {
             log.warn(e);
         }
@@ -385,8 +412,12 @@ public class PrefPageDataFormat extends TargetPrefPage
     @Override
     protected void clearPreferences(DBPPreferenceStore store)
     {
-        formatterProfile.reset();
+        if (formatterProfile != null) {
+            formatterProfile.reset();
+        }
         store.setToDefault(ModelPreferences.RESULT_NATIVE_DATETIME_FORMAT);
+        store.setToDefault(ModelPreferences.RESULT_NATIVE_NUMERIC_FORMAT);
+        store.setToDefault(ModelPreferences.RESULT_SCIENTIFIC_NUMERIC_FORMAT);
     }
 
     @Override
@@ -420,7 +451,7 @@ public class PrefPageDataFormat extends TargetPrefPage
         private static final int DELETE_ID = IDialogConstants.CLIENT_ID + 2;
         private org.eclipse.swt.widgets.List profileList;
 
-        public DataFormatProfilesEditDialog(Shell parentShell)
+        DataFormatProfilesEditDialog(Shell parentShell)
         {
             super(parentShell);
         }

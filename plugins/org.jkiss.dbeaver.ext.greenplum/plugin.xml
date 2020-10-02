@@ -58,12 +58,13 @@
                           optional="true" bundle="!drivers.postgresql"/>
                     <file type="jar" path="maven:/net.postgis:postgis-jdbc-jtsparser:RELEASE[2.2.1]"
                           ignore-dependencies="true" optional="true" bundle="!drivers.postgresql"/>
+                    <file type="jar" path="maven:/net.postgis:postgis-geometry:RELEASE[2.5.0]"
+                          ignore-dependencies="true" optional="true" bundle="!drivers.postgresql"/>
 
                     <file type="license" path="drivers/postgresql/LICENSE.txt" bundle="drivers.postgresql"/>
-                    <file type="jar" path="drivers/postgresql/postgresql.jar" bundle="drivers.postgresql"/>
-                    <file type="jar" path="drivers/postgis/postgis-jdbc.jar" bundle="drivers.postgresql"/>
-                    <file type="jar" path="drivers/waffle/waffle-jna.jar" bundle="drivers.postgresql"/>
-                    <file type="jar" path="drivers/waffle/caffeine.jar" bundle="drivers.postgresql"/>
+                    <file type="jar" path="drivers/postgresql" bundle="drivers.postgresql"/>
+                    <file type="jar" path="drivers/postgis" bundle="drivers.postgresql"/>
+<!--                    <file type="jar" path="drivers/waffle" bundle="drivers.postgresql"/>-->
                     <parameter name="serverType" value="greenplum"/>
                     <property name="loginTimeout" value="20"/>
                     <property name="connectTimeout" value="20"/>

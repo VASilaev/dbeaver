@@ -20,10 +20,7 @@ import org.jkiss.code.NotNull;
 import org.jkiss.code.Nullable;
 import org.jkiss.dbeaver.DBException;
 import org.jkiss.dbeaver.Log;
-import org.jkiss.dbeaver.model.DBPEvaluationContext;
-import org.jkiss.dbeaver.model.DBPNamedObject2;
-import org.jkiss.dbeaver.model.DBPScriptObjectExt2;
-import org.jkiss.dbeaver.model.DBUtils;
+import org.jkiss.dbeaver.model.*;
 import org.jkiss.dbeaver.model.exec.DBCException;
 import org.jkiss.dbeaver.model.impl.jdbc.JDBCUtils;
 import org.jkiss.dbeaver.model.impl.jdbc.cache.JDBCStructCache;
@@ -132,7 +129,7 @@ public abstract class PostgreTableBase extends JDBCTable<PostgreDataSource, Post
         return this.oid;
     }
 
-    @Property(order = 90)
+    @Property(viewable = true, multiline = true, order = 90)
     @Nullable
     public String[] getRelOptions() {
         return relOptions;
@@ -182,7 +179,7 @@ public abstract class PostgreTableBase extends JDBCTable<PostgreDataSource, Post
      * @param monitor progress monitor
      */
     @Override
-    public Collection<? extends PostgreTableColumn> getAttributes(@NotNull DBRProgressMonitor monitor)
+    public List<? extends PostgreTableColumn> getAttributes(@NotNull DBRProgressMonitor monitor)
         throws DBException
     {
         return getContainer().getSchema().getTableCache().getChildren(monitor, getContainer(), this);
@@ -244,8 +241,8 @@ public abstract class PostgreTableBase extends JDBCTable<PostgreDataSource, Post
     @Override
     public DBSObject refreshObject(@NotNull DBRProgressMonitor monitor) throws DBException
     {
-        getContainer().getSchema().constraintCache.clearObjectCache(this);
-        getContainer().getSchema().indexCache.clearObjectCache(this);
+        getContainer().getSchema().getConstraintCache().clearObjectCache(this);
+        getContainer().getSchema().getIndexCache().clearObjectCache(this);
         return getContainer().getSchema().getTableCache().refreshObject(monitor, getContainer().getSchema(), this);
     }
 
@@ -284,7 +281,8 @@ public abstract class PostgreTableBase extends JDBCTable<PostgreDataSource, Post
 
     @Override
     public boolean supportsObjectDefinitionOption(String option) {
-        return OPTION_DDL_ONLY_FOREIGN_KEYS.equals(option) || OPTION_DDL_SKIP_FOREIGN_KEYS.equals(option);
+        return DBPScriptObject.OPTION_DDL_ONLY_FOREIGN_KEYS.equals(option) || DBPScriptObject.OPTION_DDL_SKIP_FOREIGN_KEYS.equals(option)
+               || DBPScriptObject.OPTION_INCLUDE_PERMISSIONS.equals(option) || DBPScriptObject.OPTION_INCLUDE_COMMENTS.equals(option);
     }
 
     public static class TablespaceListProvider implements IPropertyValueListProvider<PostgreTableBase> {
@@ -296,6 +294,9 @@ public abstract class PostgreTableBase extends JDBCTable<PostgreDataSource, Post
         @Override
         public Object[] getPossibleValues(PostgreTableBase object)
         {
+            if (!object.getDataSource().getServerType().supportsTablespaces()) {
+                return new Object[0];
+            }
             try {
                 Collection<PostgreTablespace> tablespaces = object.getDatabase().getTablespaces(new VoidProgressMonitor());
                 return tablespaces.toArray(new Object[0]);

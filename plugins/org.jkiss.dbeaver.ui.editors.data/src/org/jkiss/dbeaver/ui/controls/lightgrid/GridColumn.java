@@ -56,8 +56,9 @@ class GridColumn {
     private int level;
     private int width = DEFAULT_WIDTH;
     private int height = -1;
+    private int pinIndex = -1;
 
-	public GridColumn(LightGrid grid, Object element) {
+    public GridColumn(LightGrid grid, Object element) {
         this.grid = grid;
         this.element = element;
         this.parent = null;
@@ -105,14 +106,26 @@ class GridColumn {
 	void setWidth(int width, boolean redraw) {
         int delta = width - this.width;
 		this.width = width;
-        if (parent != null) {
-            parent.width += delta;
+        for (GridColumn pc = parent; pc != null; pc = pc.parent) {
+            pc.width += delta;
         }
 		if (redraw) {
 			grid.setScrollValuesObsolete();
 			grid.redraw();
 		}
 	}
+
+    public boolean isPinned() {
+        return pinIndex >= 0 || parent != null && parent.isPinned();
+    }
+
+    public int getPinIndex() {
+        return parent == null ? pinIndex : parent.getPinIndex();
+    }
+
+    public void setPinIndex(int pinIndex) {
+        this.pinIndex = pinIndex;
+    }
 
     public boolean isOverFilterButton(int x, int y) {
 	    if (!isFilterable()) {

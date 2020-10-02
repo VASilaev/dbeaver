@@ -20,11 +20,12 @@ import org.jkiss.dbeaver.Log;
 import org.jkiss.dbeaver.ext.postgresql.model.PostgreDataSource;
 import org.jkiss.dbeaver.model.exec.DBCException;
 import org.jkiss.dbeaver.model.exec.DBCSession;
-import org.jkiss.dbeaver.model.exec.jdbc.JDBCPreparedStatement;
 import org.jkiss.dbeaver.model.exec.jdbc.JDBCResultSet;
 import org.jkiss.dbeaver.model.exec.jdbc.JDBCSession;
+import org.jkiss.dbeaver.model.exec.jdbc.JDBCStatement;
 import org.jkiss.dbeaver.model.exec.plan.DBCPlanCostNode;
 import org.jkiss.dbeaver.model.exec.plan.DBCPlanNode;
+import org.jkiss.dbeaver.model.exec.plan.DBCQueryPlannerConfiguration;
 import org.jkiss.dbeaver.model.impl.plan.AbstractExecutionPlan;
 import org.jkiss.utils.CommonUtils;
 import org.jkiss.utils.xml.XMLException;
@@ -51,19 +52,22 @@ public class PostgreExecutionPlan extends AbstractExecutionPlan {
     private boolean oldQuery;
     private boolean verbose;
     private String query;
+    private DBCQueryPlannerConfiguration configuration;
     private List<DBCPlanNode> rootNodes;
 
-    public PostgreExecutionPlan(boolean oldQuery, boolean verbose, String query)
+    public PostgreExecutionPlan(boolean oldQuery, boolean verbose, String query, DBCQueryPlannerConfiguration configuration)
     {
         this.oldQuery = oldQuery;
         this.verbose = verbose;
         this.query = query;
+        this.configuration = configuration;
     }
 
     public PostgreExecutionPlan(String query, List<PostgrePlanNodeExternal> nodes) {
         this.query = query;
         this.rootNodes = new ArrayList<>();
         this.rootNodes.addAll(nodes);
+        this.configuration = new DBCQueryPlannerConfiguration();
     }
 
     @Override
@@ -88,7 +92,8 @@ public class PostgreExecutionPlan extends AbstractExecutionPlan {
         if (oldQuery) {
             return "EXPLAIN " + (verbose ? "VERBOSE " : "") + query;
         } else {
-            return "EXPLAIN (FORMAT XML, ANALYSE) " + query;
+            boolean doAnalyze = CommonUtils.toBoolean(this.configuration.getParameters().get(PostgreQueryPlaner.PARAM_ANALYSE));
+            return "EXPLAIN (FORMAT XML" + (doAnalyze ? ", ANALYSE" : "") + ") " + query;
         }
     }
 
@@ -108,8 +113,8 @@ public class PostgreExecutionPlan extends AbstractExecutionPlan {
             if (oldAutoCommit) {
                 connection.setAutoCommit(false);
             }
-            try (JDBCPreparedStatement dbStat = connection.prepareStatement(getPlanQueryString())) {
-                try (JDBCResultSet dbResult = dbStat.executeQuery()) {
+            try (JDBCStatement dbStat = connection.createStatement()) {
+                try (JDBCResultSet dbResult = dbStat.executeQuery(getPlanQueryString())) {
                     if (oldQuery) {
                         List<String> planLines = new ArrayList<>();
                         while (dbResult.next()) {

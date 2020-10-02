@@ -213,7 +213,7 @@ public class JDBCConnectionImpl extends AbstractSession implements JDBCSession, 
     @Override
     public DBDValueHandler getDefaultValueHandler()
     {
-        return context.getDataSource().getDefaultValueHandler();
+        return context.getDataSource().getContainer().getDefaultValueHandler();
     }
 
     private JDBCStatement makeStatement(Statement statement)
@@ -691,7 +691,12 @@ public class JDBCConnectionImpl extends AbstractSession implements JDBCSession, 
     {
         if (context.isConnected()) {
             try {
-                getOriginal().close();
+                // Sync execution context because async access during disconnect may cause troubles
+                synchronized (getExecutionContext()) {
+                    if (!getDataSource().closeConnection(getOriginal(), "Close database connection", false)) {
+                        throw new DBCException("Couldn't close JDBC connection: timeout");
+                    }
+                }
             } catch (SQLException e) {
                 throw new DBCException(e, getExecutionContext());
             }

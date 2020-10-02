@@ -17,8 +17,8 @@ import java.util.List;
 public class DBPConnectionType implements DBPDataSourcePermissionOwner {
 
     public static final DBPConnectionType DEV = new DBPConnectionType("dev", ModelMessages.dbp_connection_type_table_development, "255,255,255", ModelMessages.dbp_connection_type_table_regular_development_database, true, false, false, true, null); //$NON-NLS-1$ //$NON-NLS-3$
-    public static final DBPConnectionType TEST = new DBPConnectionType("test", ModelMessages.dbp_connection_type_table_test, "196,255,181", ModelMessages.dbp_connection_type_table_test_database, true, false, true, true, null); //$NON-NLS-1$ //$NON-NLS-3$
-    public static final DBPConnectionType PROD = new DBPConnectionType("prod", ModelMessages.dbp_connection_type_table_production, "247,159,129", ModelMessages.dbp_connection_type_table_production_database, false, true, true, true, null); //$NON-NLS-1$ //$NON-NLS-3$
+    public static final DBPConnectionType TEST = new DBPConnectionType("test", ModelMessages.dbp_connection_type_table_test, "org.jkiss.dbeaver.color.connectionType.qa.background", ModelMessages.dbp_connection_type_table_test_database, true, false, true, true, null); //$NON-NLS-1$ //$NON-NLS-3$
+    public static final DBPConnectionType PROD = new DBPConnectionType("prod", ModelMessages.dbp_connection_type_table_production, "org.jkiss.dbeaver.color.connectionType.prod.background", ModelMessages.dbp_connection_type_table_production_database, false, true, true, true, null); //$NON-NLS-1$ //$NON-NLS-3$
 
     public static final DBPConnectionType[] SYSTEM_TYPES = {DEV, TEST, PROD};
     public static final DBPConnectionType DEFAULT_TYPE = DEV;
@@ -71,7 +71,7 @@ public class DBPConnectionType implements DBPDataSourcePermissionOwner {
     {
         this.id = id;
         this.name = name;
-        this.color = color;
+        this.color = getColorValueFixed(color);
         this.description = description;
         this.autocommit = autocommit;
         this.confirmExecute = confirmExecute;
@@ -90,6 +90,10 @@ public class DBPConnectionType implements DBPDataSourcePermissionOwner {
         return id;
     }
 
+    public String setId(String id) {
+        return this.id = id;
+    }
+
     public String getName() {
         return name;
     }
@@ -103,7 +107,7 @@ public class DBPConnectionType implements DBPDataSourcePermissionOwner {
     }
 
     public void setColor(String color) {
-        this.color = color;
+        this.color = getColorValueFixed(color);
     }
 
     public String getDescription() {
@@ -159,6 +163,17 @@ public class DBPConnectionType implements DBPDataSourcePermissionOwner {
         } else {
             this.connectionModifyRestrictions = new ArrayList<>(permissions);
         }
+    }
+
+    private String getColorValueFixed(String color) {
+        // Backward compatibility.
+        // In old times we had hardcoded colors now we need to change them to color constants
+        if (PROD != null && this.id.equals(PROD.id) && color.equals("247,159,129")) {
+            return PROD.color;
+        } else if (TEST != null && this.id.equals(TEST.id) && color.equals("196,255,181")) {
+            return TEST.color;
+        }
+        return color;
     }
 
     @Override

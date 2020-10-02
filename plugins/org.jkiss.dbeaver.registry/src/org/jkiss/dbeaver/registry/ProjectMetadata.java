@@ -35,6 +35,7 @@ import org.jkiss.dbeaver.model.app.DBASecureStorage;
 import org.jkiss.dbeaver.model.app.DBPDataSourceRegistry;
 import org.jkiss.dbeaver.model.app.DBPProject;
 import org.jkiss.dbeaver.model.app.DBPWorkspace;
+import org.jkiss.dbeaver.model.data.json.JSONUtils;
 import org.jkiss.dbeaver.model.runtime.AbstractJob;
 import org.jkiss.dbeaver.model.runtime.DBRProgressMonitor;
 import org.jkiss.dbeaver.model.task.DBTTaskManager;
@@ -182,6 +183,11 @@ public class ProjectMetadata implements DBPProject {
         return dataSourceRegistry != null;
     }
 
+    @Override
+    public boolean isModernProject() {
+        return getFormat() == ProjectFormat.MODERN;
+    }
+
     @NotNull
     @Override
     public DBPDataSourceRegistry getDataSourceRegistry() {
@@ -256,7 +262,7 @@ public class ProjectMetadata implements DBPProject {
             if (settingsFile.exists() && settingsFile.length() > 0) {
                 // Parse metadata
                 try (Reader settingsReader = new InputStreamReader(new FileInputStream(settingsFile), StandardCharsets.UTF_8)) {
-                    properties = METADATA_GSON.fromJson(settingsReader, Map.class);
+                    properties = JSONUtils.parseMap(METADATA_GSON, settingsReader);
                 } catch (Throwable e) {
                     log.error("Error reading project '" + getName() + "' setting from "  + settingsFile.getAbsolutePath(), e);
                 }

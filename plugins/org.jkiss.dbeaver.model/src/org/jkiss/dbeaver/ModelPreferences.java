@@ -25,11 +25,13 @@ import org.jkiss.dbeaver.model.preferences.DBPPreferenceStore;
 import org.jkiss.dbeaver.model.qm.QMConstants;
 import org.jkiss.dbeaver.model.qm.QMObjectType;
 import org.jkiss.dbeaver.model.sql.SQLConstants;
+import org.jkiss.dbeaver.registry.formatter.DataFormatterProfile;
 import org.jkiss.dbeaver.utils.GeneralUtils;
 import org.jkiss.dbeaver.utils.PrefUtils;
 import org.osgi.framework.Bundle;
 
 import java.util.Arrays;
+import java.util.Locale;
 
 /**
  * Preferences constants
@@ -73,6 +75,7 @@ public final class ModelPreferences
 
     public static final String RESULT_NATIVE_DATETIME_FORMAT = "resultset.format.datetime.native"; //$NON-NLS-1$
     public static final String RESULT_NATIVE_NUMERIC_FORMAT = "resultset.format.numeric.native"; //$NON-NLS-1$
+    public static final String RESULT_SCIENTIFIC_NUMERIC_FORMAT = "resultset.format.numeric.scientific"; //$NON-NLS-1$
     public static final String RESULT_TRANSFORM_COMPLEX_TYPES = "resultset.transform.complex.type"; //$NON-NLS-1$
 
     // Network
@@ -112,6 +115,7 @@ public final class ModelPreferences
     public static final String SQL_FORMAT_INSERT_DELIMITERS_IN_EMPTY_LINES = "sql.format.insert.delimiters.in.empty_lines";
 
     public static final String READ_EXPENSIVE_PROPERTIES = "database.props.expensive"; //$NON-NLS-1$
+    public static final String READ_EXPENSIVE_STATISTICS = "database.stats.expensive"; //$NON-NLS-1$
 
     // Driver and proxy settings. They have prefix UI_ by historical reasons.
     public static final String UI_DRIVERS_VERSION_UPDATE = "ui.drivers.version.update"; //$NON-NLS-1$
@@ -131,6 +135,8 @@ public final class ModelPreferences
     public static final String TRANSACTIONS_SMART_COMMIT = "transaction.smart.commit"; //$NON-NLS-1$
     public static final String TRANSACTIONS_SMART_COMMIT_RECOVER = "transaction.smart.commit.recover"; //$NON-NLS-1$
     public static final String TRANSACTIONS_SHOW_NOTIFICATIONS = "transaction.show.notifications"; //$NON-NLS-1$
+
+    public static final String DICTIONARY_COLUMN_DIVIDER = "resultset.dictionary.columnDivider"; //$NON-NLS-1$
 
     private static Bundle mainBundle;
     private static DBPPreferenceStore preferences;
@@ -186,6 +192,7 @@ public final class ModelPreferences
 
         PrefUtils.setDefaultPreferenceValue(store, RESULT_NATIVE_DATETIME_FORMAT, false);
         PrefUtils.setDefaultPreferenceValue(store, RESULT_NATIVE_NUMERIC_FORMAT, false);
+        PrefUtils.setDefaultPreferenceValue(store, RESULT_SCIENTIFIC_NUMERIC_FORMAT, false);
         PrefUtils.setDefaultPreferenceValue(store, RESULT_TRANSFORM_COMPLEX_TYPES, true);
 
         PrefUtils.setDefaultPreferenceValue(store, RESULT_SET_REREAD_ON_SCROLLING, true);
@@ -237,6 +244,7 @@ public final class ModelPreferences
         PrefUtils.setDefaultPreferenceValue(store, SQL_FORMAT_INSERT_DELIMITERS_IN_EMPTY_LINES, false);
 
         PrefUtils.setDefaultPreferenceValue(store, READ_EXPENSIVE_PROPERTIES, false);
+        PrefUtils.setDefaultPreferenceValue(store, READ_EXPENSIVE_STATISTICS, false);
 
         PrefUtils.setDefaultPreferenceValue(store, UI_PROXY_HOST, "");
         PrefUtils.setDefaultPreferenceValue(store, UI_PROXY_PORT, 1080);
@@ -253,5 +261,10 @@ public final class ModelPreferences
         PrefUtils.setDefaultPreferenceValue(store, ModelPreferences.TRANSACTIONS_SMART_COMMIT, false);
         PrefUtils.setDefaultPreferenceValue(store, ModelPreferences.TRANSACTIONS_SMART_COMMIT_RECOVER, true);
         PrefUtils.setDefaultPreferenceValue(store, ModelPreferences.TRANSACTIONS_SHOW_NOTIFICATIONS, true);
+
+        PrefUtils.setDefaultPreferenceValue(store, ModelPreferences.DICTIONARY_COLUMN_DIVIDER, " ");
+
+        // Data formats
+        DataFormatterProfile.initDefaultPreferences(store, Locale.getDefault());
     }
 }
